@@ -36,7 +36,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 L1X_VERSION=$VERSION
-L1X_FLAVOR="l1x-$FLAVOR"
+L1X_FLAVOR="log10x-$FLAVOR"
 
 # Determine the OS type
 if [ -f /etc/os-release ]; then
@@ -92,11 +92,11 @@ echo "| |              | | |              | | |              | | |              
 echo "| '--------------' | '--------------' | '--------------' | '--------------' | '--------------' | '--------------' |"
 echo " '----------------' '----------------' '----------------' '----------------' '----------------' '----------------' "
 
-echo "Looking for a previous installation of L1X..."
+echo "Looking for a previous installation of Log10x..."
 if [ -d "$L1X_HOME" ]; then
     echo ""
     echo "======================================================================================================"
-    echo " You already have L1X installed at - $L1X_HOME"
+    echo " You already have Log10x installed at - $L1X_HOME"
     echo "======================================================================================================"
     echo ""
     exit 0
