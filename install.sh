@@ -52,6 +52,21 @@ else
     exit 1
 fi
 
+ARCH="$(uname -m)"
+
+case $ARCH in
+	x86_64)
+		;;
+	aarch64)
+		;;
+	*)
+		echo "Unsupported arch $ARCH"
+		exit 1
+		;;
+esac
+
+echo "Detected machine as $OS $VERSION_ID $ARCH"
+
 #Validate native on supported os only
 if [ "$FLAVOR" == "native" ]; then
     if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
@@ -66,15 +81,28 @@ INSTALL_CMD=""
 
 # Set commands based on OS and flavor
 if [ "$FLAVOR" == "native" ]; then
-    ARTIFACT_FILE="log10x-edge-$L1X_VERSION-native"
+	if [[ "$ARCH" == "x86_64" ]]; then
+    	ARTIFACT_FILE="log10x-edge-$L1X_VERSION-amd64-native"
+    elif [[ "$ARCH" == "aarch64" ]]; then
+    	ARTIFACT_FILE="log10x-edge-$L1X_VERSION-aarch64-native"
+    fi
 
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
-    ARTIFACT_FILE="${L1X_FLAVOR}_$L1X_VERSION-1_amd64.deb"
+    if [[ "$ARCH" == "x86_64" ]]; then
+    	ARTIFACT_FILE="${L1X_FLAVOR}_$L1X_VERSION-1_amd64.deb"
+    elif [[ "$ARCH" == "aarch64" ]]; then
+    	ARTIFACT_FILE="${L1X_FLAVOR}_$L1X_VERSION-1_arm64.deb"
+    fi
+
     INSTALL_CMD="apt-get install -y"
 
 elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
-    ARTIFACT_FILE="$L1X_FLAVOR-$L1X_VERSION-1.x86_64.rpm"
-        
+    if [[ "$ARCH" == "x86_64" ]]; then
+    	ARTIFACT_FILE="$L1X_FLAVOR-$L1X_VERSION-1.x86_64.rpm"
+    elif [[ "$ARCH" == "aarch64" ]]; then
+    	ARTIFACT_FILE="$L1X_FLAVOR-$L1X_VERSION-1.aarch64.rpm"
+    fi
+
     if [ command -v dnf &> /dev/null ]; then
         INSTALL_CMD="dnf install -y"
     else
