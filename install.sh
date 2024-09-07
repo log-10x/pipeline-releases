@@ -3,7 +3,7 @@
 set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
-VERSION="0.5.0"
+VERSION="0.5.1"
 FLAVOR="cloud"
 DOWNLOAD_CONFIG="true"
 
