@@ -213,12 +213,12 @@ fi
 # Set up the environment variable
 echo ""
 echo "Setting up environment variables"
-echo "export L1X_HOME=/opt/$L1X_FLAVOR" | sudo tee "/etc/profile.d/$L1X_FLAVOR.sh"
-echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/$L1X_FLAVOR.sh"
-echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/$L1X_FLAVOR.sh"
+echo "export L1X_HOME=/opt/$L1X_FLAVOR" | sudo tee "/etc/profile.d/log10x.sh"
+echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
+echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 
 if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-echo "export L1X_PATH=$L1X_PATH" | sudo tee -a "/etc/profile.d/$L1X_FLAVOR.sh"
+echo "export L1X_PATH=$L1X_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 fi
 
 # Clean up
@@ -242,6 +242,6 @@ echo "Added bin - /opt/$L1X_FLAVOR/bin - to \$PATH"
 echo ""
 echo "Log10x log file is written into /var/log/l1x/"
 echo ""
-echo "Please restart your terminal or run 'source /etc/profile.d/$L1X_FLAVOR.sh' to apply the environment variables."
+echo "Please restart your terminal or run 'source /etc/profile.d/log10x.sh' to apply the environment variables."
 echo ""
 echo "Enjoy using Log10x :)"
