@@ -6,12 +6,16 @@ GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="0.6.2"
 FLAVOR="cloud"
 DOWNLOAD_CONFIG="true"
+SETUP_ENV_VARS="true"
 
 # Argument parsing
 while [[ "$#" -gt 0 ]]; do
     case $1 in
     	--no-config)
 			DOWNLOAD_CONFIG="false"
+			;;
+		--no-env-setup)
+			SETUP_ENV_VARS="false"
 			;;
         --version)
             VERSION="$2"
@@ -27,12 +31,12 @@ while [[ "$#" -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
             exit 1
             ;;
     esac
@@ -210,15 +214,17 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_PATH"
 fi
 
-# Set up the environment variable
-echo ""
-echo "Setting up environment variables"
-echo "export L1X_HOME=/opt/$L1X_FLAVOR" | sudo tee "/etc/profile.d/log10x.sh"
-echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
-echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+if [ "$SETUP_ENV_VARS" == "true" ]; then
+	# Set up the environment variable
+	echo ""
+	echo "Setting up environment variables"
+	echo "export L1X_HOME=/opt/$L1X_FLAVOR" | sudo tee "/etc/profile.d/log10x.sh"
+	echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
+	echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 
-if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-echo "export L1X_PATH=$L1X_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+	echo "export L1X_PATH=$L1X_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+	fi
 fi
 
 # Clean up
@@ -229,19 +235,24 @@ echo "Installation complete."
 echo ""
 echo "Installed into - /opt/$L1X_FLAVOR"
 echo ""
-echo "Configured the following environment variables:"
-echo "    L1X_HOME - /opt/$L1X_FLAVOR"
-echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
-
-if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-echo "    L1X_PATH - $L1X_PATH"
-fi
-
-echo ""
-echo "Added bin - /opt/$L1X_FLAVOR/bin - to \$PATH"
-echo ""
 echo "Log10x log file is written into /var/log/l1x/"
 echo ""
-echo "Please restart your terminal or run 'source /etc/profile.d/log10x.sh' to apply the environment variables."
-echo ""
+
+if [ "$SETUP_ENV_VARS" == "true" ]; then
+	echo "Configured the following environment variables:"
+	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
+	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
+
+	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+	echo "    L1X_PATH - $L1X_PATH"
+	fi
+
+	echo ""
+	echo "Added bin - /opt/$L1X_FLAVOR/bin - to \$PATH"
+	echo ""
+
+	echo "Please restart your terminal or run 'source /etc/profile.d/log10x.sh' to apply the environment variables."
+	echo ""
+fi
+
 echo "Enjoy using Log10x :)"
