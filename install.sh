@@ -153,17 +153,19 @@ if ! command -v curl > /dev/null; then
     exit 1
 fi
 
-echo "Looking for sudo..."
-if ! command -v sudo > /dev/null; then
-    echo "Not found."
-    echo ""
-    echo "======================================================================================================"
-    echo " Please install sudo on your system using your favourite package manager."
-    echo ""
-    echo " Restart after installing sudo."
-    echo "======================================================================================================"
-    echo ""
-    exit 1
+if [ "$SETUP_ENV_VARS" == "true" ]; then
+	echo "Looking for sudo..."
+	if ! command -v sudo > /dev/null; then
+	    echo "Not found."
+	    echo ""
+	    echo "======================================================================================================"
+	    echo " Please install sudo on your system using your favourite package manager."
+	    echo ""
+	    echo " Restart after installing sudo."
+	    echo "======================================================================================================"
+	    echo ""
+	    exit 1
+	fi
 fi
 
 ARTIFACT_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$ARTIFACT_FILE"
@@ -252,6 +254,18 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo ""
 
 	echo "Please restart your terminal or run 'source /etc/profile.d/log10x.sh' to apply the environment variables."
+	echo ""
+else
+	echo "Environment vars where not set."
+	echo "It is recommended to set the following environment variables for convenient usage -"
+	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
+	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
+
+	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+	echo "    L1X_PATH - $L1X_PATH"
+	fi
+	echo ""
+	echo "Additionally, it's also recommended to add /opt/$L1X_FLAVOR/bin to the \$PATH"
 	echo ""
 fi
 
