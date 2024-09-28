@@ -6,11 +6,15 @@ GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="0.8.0"
 FLAVOR="cloud"
 DOWNLOAD_CONFIG="true"
+DOWNLOAD_MODULES="true"
 SETUP_ENV_VARS="true"
 
 # Argument parsing
 while [[ "$#" -gt 0 ]]; do
     case $1 in
+    	--no-modules)
+			DOWNLOAD_MODULES="false"
+			;;
     	--no-config)
 			DOWNLOAD_CONFIG="false"
 			;;
@@ -31,12 +35,12 @@ while [[ "$#" -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-modules] [--no-config] [--no-env-setup]"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-modules] [--no-config] [--no-env-setup]"
             exit 1
             ;;
     esac
@@ -45,6 +49,10 @@ done
 
 L1X_VERSION=$VERSION
 L1X_FLAVOR="log10x-$FLAVOR"
+
+if [ "$FLAVOR" != "native" ]; then
+	DOWNLOAD_MODULES="false"
+fi
 
 # Determine the OS type
 if [ -f /etc/os-release ]; then
@@ -80,6 +88,7 @@ if [ "$FLAVOR" == "native" ]; then
 fi
 
 ARTIFACT_FILE=""
+MODULES_FILE="log10x-modules-$L1X_VERSION.tar.gz"
 CONFIG_FILE="log10x-config-$L1X_VERSION.tar.gz"
 INSTALL_CMD=""
 
@@ -199,7 +208,24 @@ fi
 
 ln -s "/opt/$L1X_FLAVOR/bin/$L1X_FLAVOR" "/opt/$L1X_FLAVOR/bin/log10x"
 
-L1X_PATH="/etc/log10x/config"
+L1X_MODULES_PATH="/etc/log10x/modules"
+
+if [ "$DOWNLOAD_MODULES" == "true" ]; then
+	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$MODULES_FILE"
+	MODULES_CURL="curl -f -L -o $TEMP_DIR/$MODULES_FILE $MODULES_URL"
+
+	echo ""
+	echo "Downloading Log10x modules: $MODULES_CURL"
+	$MODULES_CURL
+
+	echo ""
+	echo "Unpacking Log10x modules into $L1X_MODULES_PATH"
+
+	mkdir -p "$L1X_MODULES_PATH"
+	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$L1X_MODULES_PATH"
+fi
+
+L1X_CONFIG_PATH="/etc/log10x/config"
 
 if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	CONFIG_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$CONFIG_FILE"
@@ -210,10 +236,10 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	$CONFIG_CURL
 
 	echo ""
-	echo "Unpacking Log10x configuration into $L1X_PATH"
+	echo "Unpacking Log10x configuration into $L1X_CONFIG_PATH"
 
-	mkdir -p "$L1X_PATH"
-	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_PATH"
+	mkdir -p "$L1X_CONFIG_PATH"
+	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_CONFIG_PATH"
 fi
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
@@ -224,8 +250,12 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
 	echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 
+	if [ "$DOWNLOAD_MODULES" == "true" ]; then
+		echo "export L1X_MODULES_PATH=$L1X_MODULES_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+	fi
+
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "export L1X_PATH=$L1X_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+		echo "export L1X_CONFIG_PATH=$L1X_CONFIG_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 	fi
 fi
 
@@ -246,7 +276,11 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_PATH - $L1X_PATH"
+	echo "    L1X_CONFIG_PATH - $L1X_CONFIG_PATH"
+	fi
+
+	if [ "$DOWNLOAD_MODULES" == "true" ]; then
+	echo "    L1X_MODULES_PATH - $L1X_MODULES_PATH"
 	fi
 
 	echo ""
@@ -260,9 +294,11 @@ else
 	echo "It is recommended to set the following environment variables for convenient usage -"
 	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
 	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
-
+	if [ "$DOWNLOAD_MODULES" == "true" ]; then
+	echo "    L1X_MODULES_PATH - $L1X_MODULES_PATH"
+	fi
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_PATH - $L1X_PATH"
+	echo "    L1X_CONFIG_PATH - $L1X_CONFIG_PATH"
 	fi
 	echo ""
 	echo "Additionally, it's also recommended to add /opt/$L1X_FLAVOR/bin to the \$PATH"
