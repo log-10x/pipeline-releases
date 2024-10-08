@@ -6,15 +6,11 @@ GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="0.9.0"
 FLAVOR="cloud"
 DOWNLOAD_CONFIG="true"
-DOWNLOAD_MODULES="true"
 SETUP_ENV_VARS="true"
 
 # Argument parsing
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-    	--no-modules)
-			DOWNLOAD_MODULES="false"
-			;;
     	--no-config)
 			DOWNLOAD_CONFIG="false"
 			;;
@@ -35,12 +31,12 @@ while [[ "$#" -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-modules] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-modules] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
             exit 1
             ;;
     esac
@@ -49,6 +45,8 @@ done
 
 L1X_VERSION=$VERSION
 L1X_FLAVOR="log10x-$FLAVOR"
+
+DOWNLOAD_MODULES="true"
 
 if [ "$FLAVOR" != "native" ]; then
 	DOWNLOAD_MODULES="false"
@@ -208,7 +206,7 @@ fi
 
 ln -s "/opt/$L1X_FLAVOR/bin/$L1X_FLAVOR" "/opt/$L1X_FLAVOR/bin/log10x"
 
-L1X_MODULES_PATH="/etc/log10x/modules"
+L1X_MODULES_PATH="/opt/$L1X_FLAVOR/lib/app/modules"
 
 if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$MODULES_FILE"
