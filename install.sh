@@ -206,7 +206,7 @@ fi
 
 ln -s "/opt/$L1X_FLAVOR/bin/$L1X_FLAVOR" "/opt/$L1X_FLAVOR/bin/log10x"
 
-L1X_MODULES_PATH="/opt/$L1X_FLAVOR/lib/app/modules"
+L1X_MODULES="/opt/$L1X_FLAVOR/lib/app/modules"
 
 if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$MODULES_FILE"
@@ -217,13 +217,13 @@ if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	$MODULES_CURL
 
 	echo ""
-	echo "Unpacking Log10x modules into $L1X_MODULES_PATH"
+	echo "Unpacking Log10x modules into $L1X_MODULES"
 
-	mkdir -p "$L1X_MODULES_PATH"
-	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$L1X_MODULES_PATH"
+	mkdir -p "$L1X_MODULES"
+	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$L1X_MODULES"
 fi
 
-L1X_CONFIG_PATH="/etc/log10x/config"
+L1X_CONFIG="/etc/log10x/config"
 
 if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	CONFIG_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$CONFIG_FILE"
@@ -234,10 +234,10 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	$CONFIG_CURL
 
 	echo ""
-	echo "Unpacking Log10x configuration into $L1X_CONFIG_PATH"
+	echo "Unpacking Log10x configuration into $L1X_CONFIG"
 
-	mkdir -p "$L1X_CONFIG_PATH"
-	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_CONFIG_PATH"
+	mkdir -p "$L1X_CONFIG"
+	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_CONFIG"
 fi
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
@@ -249,11 +249,11 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-		echo "export L1X_MODULES_PATH=$L1X_MODULES_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+		echo "export L1X_MODULES=$L1X_MODULES" | sudo tee -a "/etc/profile.d/log10x.sh"
 	fi
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-		echo "export L1X_CONFIG_PATH=$L1X_CONFIG_PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+		echo "export L1X_CONFIG=$L1X_CONFIG" | sudo tee -a "/etc/profile.d/log10x.sh"
 	fi
 fi
 
@@ -274,11 +274,11 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_CONFIG_PATH - $L1X_CONFIG_PATH"
+	echo "    L1X_CONFIG - $L1X_CONFIG"
 	fi
 
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    L1X_MODULES_PATH - $L1X_MODULES_PATH"
+	echo "    L1X_MODULES - $L1X_MODULES"
 	fi
 
 	echo ""
@@ -293,10 +293,10 @@ else
 	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
 	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    L1X_MODULES_PATH - $L1X_MODULES_PATH"
+	echo "    L1X_MODULES - $L1X_MODULES"
 	fi
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_CONFIG_PATH - $L1X_CONFIG_PATH"
+	echo "    L1X_CONFIG - $L1X_CONFIG"
 	fi
 	echo ""
 	echo "Additionally, it's also recommended to add /opt/$L1X_FLAVOR/bin to the \$PATH"
