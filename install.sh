@@ -43,8 +43,8 @@ while [[ "$#" -gt 0 ]]; do
     shift
 done
 
-L1X_VERSION=$VERSION
-L1X_FLAVOR="log10x-$FLAVOR"
+TENX_VERSION=$VERSION
+TENX_FLAVOR="log10x-$FLAVOR"
 
 DOWNLOAD_MODULES="true"
 
@@ -86,32 +86,32 @@ if [ "$FLAVOR" == "native" ]; then
 fi
 
 ARTIFACT_FILE=""
-MODULES_FILE="log10x-modules-$L1X_VERSION.tar.gz"
-CONFIG_FILE="log10x-config-$L1X_VERSION.tar.gz"
+MODULES_FILE="log10x-modules-$TENX_VERSION.tar.gz"
+CONFIG_FILE="log10x-config-$TENX_VERSION.tar.gz"
 INSTALL_CMD=""
 
 # Set commands based on OS and flavor
 if [ "$FLAVOR" == "native" ]; then
 	if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="log10x-edge-$L1X_VERSION-amd64-native"
+    	ARTIFACT_FILE="log10x-edge-$TENX_VERSION-amd64-native"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="log10x-edge-$L1X_VERSION-aarch64-native"
+    	ARTIFACT_FILE="log10x-edge-$TENX_VERSION-aarch64-native"
     fi
 
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="${L1X_FLAVOR}_$L1X_VERSION-1_amd64.deb"
+    	ARTIFACT_FILE="${TENX_FLAVOR}_$TENX_VERSION-1_amd64.deb"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="${L1X_FLAVOR}_$L1X_VERSION-1_arm64.deb"
+    	ARTIFACT_FILE="${TENX_FLAVOR}_$TENX_VERSION-1_arm64.deb"
     fi
 
     INSTALL_CMD="apt-get install -y"
 
 elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="$L1X_FLAVOR-$L1X_VERSION-1.x86_64.rpm"
+    	ARTIFACT_FILE="$TENX_FLAVOR-$TENX_VERSION-1.x86_64.rpm"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="$L1X_FLAVOR-$L1X_VERSION-1.aarch64.rpm"
+    	ARTIFACT_FILE="$TENX_FLAVOR-$TENX_VERSION-1.aarch64.rpm"
     fi
 
     if [ command -v dnf &> /dev/null ]; then
@@ -138,10 +138,10 @@ echo "| '--------------' | '--------------' | '--------------' | '--------------
 echo " '----------------' '----------------' '----------------' '----------------' '----------------' '----------------' "
 
 echo "Looking for a previous installation of Log10x..."
-if [ -d "$L1X_HOME" ]; then
+if [ -d "$TENX_HOME" ]; then
     echo ""
     echo "======================================================================================================"
-    echo " You already have Log10x installed at - $L1X_HOME"
+    echo " You already have Log10x installed at - $TENX_HOME"
     echo "======================================================================================================"
     echo ""
     exit 0
@@ -175,7 +175,7 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	fi
 fi
 
-ARTIFACT_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$ARTIFACT_FILE"
+ARTIFACT_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$ARTIFACT_FILE"
 
 # Create a temporary directory for the download
 TEMP_DIR=$(mktemp -d)
@@ -196,20 +196,20 @@ elif [ "$FLAVOR" == "native" ]; then
 	echo ""
 	echo "Installing native artifact..."
 
-	L1X_FLAVOR="log10x-edge"
+	TENX_FLAVOR="log10x-edge"
 
-    mkdir -p "/opt/$L1X_FLAVOR/bin"
-    mv "$TEMP_DIR/$ARTIFACT_FILE" "/opt/$L1X_FLAVOR/bin/$ARTIFACT_FILE"
-    chmod +x "/opt/$L1X_FLAVOR/bin/$ARTIFACT_FILE"
-    ln -s "/opt/$L1X_FLAVOR/bin/$ARTIFACT_FILE" "/opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
+    mkdir -p "/opt/$TENX_FLAVOR/bin"
+    mv "$TEMP_DIR/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
+    chmod +x "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
+    ln -s "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
 fi
 
-ln -s "/opt/$L1X_FLAVOR/bin/$L1X_FLAVOR" "/opt/$L1X_FLAVOR/bin/log10x"
+ln -s "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR" "/opt/$TENX_FLAVOR/bin/log10x"
 
-L1X_MODULES="/opt/$L1X_FLAVOR/lib/app/modules"
+TENX_MODULES="/opt/$TENX_FLAVOR/lib/app/modules"
 
 if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$MODULES_FILE"
+	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$MODULES_FILE"
 	MODULES_CURL="curl -f -L -o $TEMP_DIR/$MODULES_FILE $MODULES_URL"
 
 	echo ""
@@ -217,16 +217,16 @@ if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	$MODULES_CURL
 
 	echo ""
-	echo "Unpacking Log10x modules into $L1X_MODULES"
+	echo "Unpacking Log10x modules into $TENX_MODULES"
 
-	mkdir -p "$L1X_MODULES"
-	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$L1X_MODULES"
+	mkdir -p "$TENX_MODULES"
+	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$TENX_MODULES"
 fi
 
-L1X_CONFIG="/etc/log10x/config"
+TENX_CONFIG="/etc/log10x/config"
 
 if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	CONFIG_URL="https://github.com/$GITHUB_REPO/releases/download/$L1X_VERSION/$CONFIG_FILE"
+	CONFIG_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$CONFIG_FILE"
 	CONFIG_CURL="curl -f -L -o $TEMP_DIR/$CONFIG_FILE $CONFIG_URL"
 
 	echo ""
@@ -234,26 +234,26 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	$CONFIG_CURL
 
 	echo ""
-	echo "Unpacking Log10x configuration into $L1X_CONFIG"
+	echo "Unpacking Log10x configuration into $TENX_CONFIG"
 
-	mkdir -p "$L1X_CONFIG"
-	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$L1X_CONFIG"
+	mkdir -p "$TENX_CONFIG"
+	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$TENX_CONFIG"
 fi
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
 	# Set up the environment variable
 	echo ""
 	echo "Setting up environment variables"
-	echo "export L1X_HOME=/opt/$L1X_FLAVOR" | sudo tee "/etc/profile.d/log10x.sh"
-	echo "export L1X_BIN=\$L1X_HOME/bin/$L1X_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
-	echo "export PATH=\$L1X_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
+	echo "export TENX_HOME=/opt/$TENX_FLAVOR" | sudo tee "/etc/profile.d/log10x.sh"
+	echo "export TENX_BIN=\$TENX_HOME/bin/$TENX_FLAVOR" | sudo tee -a "/etc/profile.d/log10x.sh"
+	echo "export PATH=\$TENX_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/log10x.sh"
 
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-		echo "export L1X_MODULES=$L1X_MODULES" | sudo tee -a "/etc/profile.d/log10x.sh"
+		echo "export TENX_MODULES=$TENX_MODULES" | sudo tee -a "/etc/profile.d/log10x.sh"
 	fi
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-		echo "export L1X_CONFIG=$L1X_CONFIG" | sudo tee -a "/etc/profile.d/log10x.sh"
+		echo "export TENX_CONFIG=$TENX_CONFIG" | sudo tee -a "/etc/profile.d/log10x.sh"
 	fi
 fi
 
@@ -263,26 +263,26 @@ rm -rf $TEMP_DIR
 echo ""
 echo "Installation complete."
 echo ""
-echo "Installed into - /opt/$L1X_FLAVOR"
+echo "Installed into - /opt/$TENX_FLAVOR"
 echo ""
-echo "Log10x log file is written into /var/log/l1x/"
+echo "Log10x log file is written into /var/log/tenx/"
 echo ""
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "Configured the following environment variables:"
-	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
-	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
+	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
+	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_CONFIG - $L1X_CONFIG"
+	echo "    TENX_CONFIG - $TENX_CONFIG"
 	fi
 
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    L1X_MODULES - $L1X_MODULES"
+	echo "    TENX_MODULES - $TENX_MODULES"
 	fi
 
 	echo ""
-	echo "Added bin - /opt/$L1X_FLAVOR/bin - to \$PATH"
+	echo "Added bin - /opt/$TENX_FLAVOR/bin - to \$PATH"
 	echo ""
 
 	echo "Please restart your terminal or run 'source /etc/profile.d/log10x.sh' to apply the environment variables."
@@ -290,16 +290,16 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 else
 	echo "Environment vars where not set."
 	echo "It is recommended to set the following environment variables for convenient usage -"
-	echo "    L1X_HOME - /opt/$L1X_FLAVOR"
-	echo "    L1X_BIN -  /opt/$L1X_FLAVOR/bin/$L1X_FLAVOR"
+	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
+	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    L1X_MODULES - $L1X_MODULES"
+	echo "    TENX_MODULES - $TENX_MODULES"
 	fi
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    L1X_CONFIG - $L1X_CONFIG"
+	echo "    TENX_CONFIG - $TENX_CONFIG"
 	fi
 	echo ""
-	echo "Additionally, it's also recommended to add /opt/$L1X_FLAVOR/bin to the \$PATH"
+	echo "Additionally, it's also recommended to add /opt/$TENX_FLAVOR/bin to the \$PATH"
 	echo ""
 fi
 
