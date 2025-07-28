@@ -6,6 +6,7 @@ GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="0.22.0"
 FLAVOR="cloud"
 DOWNLOAD_CONFIG="true"
+DOWNLOAD_SYMBOLS="true"
 SETUP_ENV_VARS="true"
 
 # Argument parsing
@@ -13,6 +14,9 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
     	--no-config)
 			DOWNLOAD_CONFIG="false"
+			;;
+		--no-symbols)
+			DOWNLOAD_SYMBOLS="false"
 			;;
 		--no-env-setup)
 			SETUP_ENV_VARS="false"
@@ -31,12 +35,12 @@ while [[ "$#" -gt 0 ]]; do
             shift
             ;;
         --help)
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-symbols] [--no-env-setup]"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-env-setup]"
+            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-symbols] [--no-env-setup]"
             exit 1
             ;;
     esac
@@ -88,6 +92,7 @@ fi
 ARTIFACT_FILE=""
 MODULES_FILE="tenx-modules-$TENX_VERSION.tar.gz"
 CONFIG_FILE="tenx-config-$TENX_VERSION.tar.gz"
+SYMBOLS_FILE="tenx-symbols-$TENX_VERSION.10x.tar"
 INSTALL_CMD=""
 
 # Set commands based on OS and flavor
@@ -240,6 +245,19 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$TENX_CONFIG"
 fi
 
+TENX_SYMBOLS_PATH="/etc/tenx/symbols"
+
+if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+	mkdir -p "$TENX_SYMBOLS_PATH"
+
+	SYMBOLS_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$SYMBOLS_FILE"
+	SYMBOLS_CURL="curl -f -L -o $TENX_SYMBOLS_PATH/$SYMBOLS_FILE $SYMBOLS_URL"
+
+	echo ""
+	echo "Downloading pre-compiled 10x symbols: $SYMBOLS_CURL"
+	$SYMBOLS_CURL
+fi
+
 if [ "$SETUP_ENV_VARS" == "true" ]; then
 	# Set up the environment variable
 	echo ""
@@ -254,6 +272,10 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 		echo "export TENX_CONFIG=$TENX_CONFIG" | sudo tee -a "/etc/profile.d/tenx.sh"
+	fi
+
+	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+		echo "export TENX_SYMBOLS_PATH=$TENX_SYMBOLS_PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
 	fi
 fi
 
@@ -273,12 +295,16 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
 	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
 
+	if [ "$DOWNLOAD_MODULES" == "true" ]; then
+	echo "    TENX_MODULES - $TENX_MODULES"
+	fi
+
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	echo "    TENX_CONFIG - $TENX_CONFIG"
 	fi
 
-	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    TENX_MODULES - $TENX_MODULES"
+	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+	echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
 	fi
 
 	echo ""
@@ -297,6 +323,9 @@ else
 	fi
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	echo "    TENX_CONFIG - $TENX_CONFIG"
+	fi
+	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+	echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
 	fi
 	echo ""
 	echo "Additionally, it's also recommended to add /opt/$TENX_FLAVOR/bin to the \$PATH"
