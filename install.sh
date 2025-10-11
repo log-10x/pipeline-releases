@@ -27,7 +27,6 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         --flavor)
             FLAVOR=$(echo "$2" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
-
             if [[ "$FLAVOR" != "edge" && "$FLAVOR" != "cloud" && "$FLAVOR" != "native" ]]; then
                 echo "Invalid flavor: $FLAVOR. Allowed values are 'edge' / 'cloud' / 'native'."
                 exit 1
@@ -81,7 +80,7 @@ esac
 
 echo "Detected machine as $OS $VERSION_ID $ARCH"
 
-#Validate native on supported os only
+# Validate native on supported os only
 if [ "$FLAVOR" == "native" ]; then
     if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
         echo "Unsupported operating system $OS for $FLAVOR"
@@ -89,34 +88,31 @@ if [ "$FLAVOR" == "native" ]; then
     fi
 fi
 
-ARTIFACT_FILE=""
-MODULES_FILE="tenx-modules-$TENX_VERSION.tar.gz"
-CONFIG_FILE="tenx-config-$TENX_VERSION.tar.gz"
-SYMBOLS_FILE="tenx-symbols-$TENX_VERSION.10x.tar"
+ARTIFACT_PATTERN=""
+MODULES_FILE="tenx-modules-${TENX_VERSION}.tar.gz"
+CONFIG_FILE="tenx-config-${TENX_VERSION}.tar.gz"
+SYMBOLS_FILE="tenx-symbols-${TENX_VERSION}.10x.tar"
 INSTALL_CMD=""
 
-# Set commands based on OS and flavor
+# Set artifact pattern based on OS, flavor, and architecture
 if [ "$FLAVOR" == "native" ]; then
 	if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="tenx-edge-$TENX_VERSION-amd64-native"
+    	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-amd64-native"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="tenx-edge-$TENX_VERSION-aarch64-native"
+    	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-aarch64-native"
     fi
-
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="${TENX_FLAVOR}_$TENX_VERSION-1_amd64.deb"
+    	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?amd64\.deb"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="${TENX_FLAVOR}_$TENX_VERSION-1_arm64.deb"
+    	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?arm64\.deb"
     fi
-
     INSTALL_CMD="apt-get install -y"
-
 elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
-    	ARTIFACT_FILE="$TENX_FLAVOR-$TENX_VERSION-1.x86_64.rpm"
+    	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?x86_64\.rpm"
     elif [[ "$ARCH" == "aarch64" ]]; then
-    	ARTIFACT_FILE="$TENX_FLAVOR-$TENX_VERSION-1.aarch64.rpm"
+    	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?aarch64\.rpm"
     fi
 
     if [ command -v dnf &> /dev/null ]; then
@@ -126,7 +122,6 @@ elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
     fi
 else
     echo "Unsupported operating system: $OS"
-
     exit 1
 fi
 
@@ -180,13 +175,22 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	fi
 fi
 
-ARTIFACT_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$ARTIFACT_FILE"
-
 # Create a temporary directory for the download
 TEMP_DIR=$(mktemp -d)
 
-CURL_CMD="curl -f -L -o $TEMP_DIR/$ARTIFACT_FILE $ARTIFACT_URL"
+# Query GitHub API for release assets
+API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
+ASSET_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" "$API_URL")
 
+# Resolve main artifact URL
+ARTIFACT_URL=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed 's/.*"browser_download_url":\s*"\([^"]*\)".*/\1/')
+if [ -z "$ARTIFACT_URL" ]; then
+    echo "Error: No asset found matching pattern '$ARTIFACT_PATTERN' for release '$TENX_VERSION'"
+    exit 1
+fi
+ARTIFACT_FILE=$(basename "$ARTIFACT_URL")
+
+CURL_CMD="curl -f -L -o $TEMP_DIR/$ARTIFACT_FILE $ARTIFACT_URL"
 echo ""
 echo "Downloading artifact: $CURL_CMD"
 $CURL_CMD
@@ -196,13 +200,10 @@ if [ -n "$INSTALL_CMD" ]; then
     echo "Installing artifact with: $INSTALL_CMD $TEMP_DIR/$ARTIFACT_FILE"
     echo ""
     $INSTALL_CMD $TEMP_DIR/$ARTIFACT_FILE
-
 elif [ "$FLAVOR" == "native" ]; then
 	echo ""
 	echo "Installing native artifact..."
-
 	TENX_FLAVOR="tenx-edge"
-
     mkdir -p "/opt/$TENX_FLAVOR/bin"
     mv "$TEMP_DIR/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
     chmod +x "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
@@ -265,15 +266,12 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "export TENX_HOME=/opt/$TENX_FLAVOR" | sudo tee "/etc/profile.d/tenx.sh"
 	echo "export TENX_BIN=\$TENX_HOME/bin/$TENX_FLAVOR" | sudo tee -a "/etc/profile.d/tenx.sh"
 	echo "export PATH=\$TENX_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
-
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
 		echo "export TENX_MODULES=$TENX_MODULES" | sudo tee -a "/etc/profile.d/tenx.sh"
 	fi
-
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 		echo "export TENX_CONFIG=$TENX_CONFIG" | sudo tee -a "/etc/profile.d/tenx.sh"
 	fi
-
 	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
 		echo "export TENX_SYMBOLS_PATH=$TENX_SYMBOLS_PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
 	fi
@@ -294,38 +292,33 @@ if [ "$SETUP_ENV_VARS" == "true" ]; then
 	echo "Configured the following environment variables:"
 	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
 	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
-
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    TENX_MODULES - $TENX_MODULES"
+		echo "    TENX_MODULES - $TENX_MODULES"
 	fi
-
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    TENX_CONFIG - $TENX_CONFIG"
+		echo "    TENX_CONFIG - $TENX_CONFIG"
 	fi
-
 	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
-	echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
+		echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
 	fi
-
 	echo ""
 	echo "Added bin - /opt/$TENX_FLAVOR/bin - to \$PATH"
 	echo ""
-
 	echo "Please restart your terminal or run 'source /etc/profile.d/tenx.sh' to apply the environment variables."
 	echo ""
 else
-	echo "Environment vars where not set."
+	echo "Environment vars were not set."
 	echo "It is recommended to set the following environment variables for convenient usage -"
 	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
 	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-	echo "    TENX_MODULES - $TENX_MODULES"
+		echo "    TENX_MODULES - $TENX_MODULES"
 	fi
 	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-	echo "    TENX_CONFIG - $TENX_CONFIG"
+		echo "    TENX_CONFIG - $TENX_CONFIG"
 	fi
 	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
-	echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
+		echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
 	fi
 	echo ""
 	echo "Additionally, it's also recommended to add /opt/$TENX_FLAVOR/bin to the \$PATH"
