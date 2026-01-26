@@ -1,1 +1,29 @@
-# pipeline-releases
+# Log10x Pipeline Releases
+
+This repository hosts the public releases of [Log10x](http://doc.log10x.com).
+
+Log10x is an **Observability runtime**, it is to log/trace data what Chrome V8 is to JavaScript:
+an engine for dynamically optimizing execution with the goal improving performance and reducing the cost of data processing.
+
+## Latest Release
+
+You can download the latest version of the project from the [releases page](https://github.com/log-10x/pipeline-releases/releases/latest).
+
+[![Latest Release](https://img.shields.io/github/v/release/log-10x/pipeline-releases?label=Latest%20Release)](https://github.com/log-10x/pipeline-releases/releases/latest)
+
+## How to Use
+
+Visit our [installation instructions](http://doc.log10x.com/home/install/) for details on how to install and use Log10x.
+
+## License
+
+| Component | License |
+|-----------|---------|
+| `install.sh` (installation script) | Apache 2.0 (open source) |
+| Log10x binaries and runtime | Proprietary (commercial license required) |
+
+The installation script is open source - you can freely use, modify, and distribute it.
+
+**The Log10x software it installs requires a commercial license for production use.** Visit [log10x.com/pricing](https://log10x.com/pricing) for licensing options, or contact sales@log10x.com for enterprise inquiries.
+
+See [LICENSE](LICENSE) for the proprietary license terms that apply to Log10x binaries. Each release includes a `LICENSE.txt` file that is automatically installed to `/opt/tenx-{flavor}/LICENSE` during installation.
