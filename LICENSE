@@ -8,6 +8,20 @@ This software and associated documentation files (the "Software") are the
 proprietary property of Log10x, Inc. and are protected by copyright law and
 international treaties.
 
+DEFINITIONS
+
+"Software" means the Log10x software in any form, including, but not limited to:
+(a) source code contained in this repository; (b) compiled binaries, executables,
+and libraries; (c) container images and packages distributed by Log10x; (d) any
+updates, patches, or new versions; and (e) associated documentation, APIs, and
+configuration schemas.
+
+"Log10x Engine" or "Runtime" means the core processing components of the Software
+that execute pipelines, process log/trace events, perform optimization, regulation,
+reporting, or streaming functions, regardless of how packaged or deployed.
+
+"You" means the individual or entity exercising rights under this license.
+
 RESTRICTIONS
 
 You may not, without prior written authorization from Log10x, Inc.:
@@ -20,12 +34,30 @@ You may not, without prior written authorization from Log10x, Inc.:
    the Software.
 4. Use the Software for any purpose other than as expressly authorized under
    a valid Log10x license agreement.
+5. Circumvent, disable, or interfere with any license validation, metering,
+   usage tracking, or security features of the Software.
+6. Use the Software to provide services to third parties, including, but not
+   limited to, service bureau use, managed services, or software-as-a-service
+   offerings, unless expressly authorized under an OEM or reseller agreement.
 
 COMMERCIAL USE
 
 Use of this Software requires a valid Log10x subscription or license agreement.
+Your license permits use by Your employees and contractors acting on Your behalf,
+subject to the node/instance limits specified in Your subscription.
+
 Visit https://log10x.com/pricing for licensing options, or contact
 sales@log10x.com for enterprise inquiries.
+
+TERMINATION
+
+This license is effective until terminated. Log10x may terminate this license
+if You fail to comply with any term. For payment-related breaches, You will
+receive 30 days written notice and opportunity to cure. For material breaches
+of the Restrictions section, termination may be immediate. Upon termination,
+You must cease all use of the Software and destroy all copies in Your possession
+or control. Sections titled Definitions, Restrictions, Warranty Disclaimer,
+Limitation of Liability, and Governing Law shall survive termination.
 
 WARRANTY DISCLAIMER
 
@@ -49,7 +81,23 @@ law provisions.
 ENTIRE AGREEMENT
 
 This license constitutes the entire agreement between you and Log10x, Inc.
-regarding the Software and supersedes all prior agreements and understandings.
+regarding the Software and supersedes all prior agreements and understandings,
+except as modified by a written agreement signed by both parties (such as a
+Master Service Agreement, Enterprise License Agreement, or Order Form).
+
+---
+
+OPEN SOURCE TOOLING
+
+Log10x publishes deployment and configuration tools under the Apache License 2.0,
+including, but not limited to, Helm charts, Terraform modules, Docker build files,
+and configuration schemas. These are available at https://github.com/log-10x
+
+These tools are governed by the Apache License 2.0, which permits use, modification,
+and redistribution subject to its terms (including attribution requirements). However,
+using these tools does not grant any license to use the Log10x Engine or Runtime.
+A valid Log10x subscription is required to run Log10x Software regardless of how
+it is deployed.
 
 ---
 
