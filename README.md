@@ -13,16 +13,17 @@ You can download the latest version of the project from the [releases page](http
 
 ## How to Use
 
-Visit our [installation instructions](http://doc.log10x.com/home/install/) for details on how to install and use Log10x.
+Visit our [installation instructions](http://doc.log10x.com/install/) for details on how to install and use Log10x, or jump straight to the [Quickstart](http://doc.log10x.com/quickstart/).
 
 ## License
 
 | Component | License |
 |-----------|---------|
-| `install.sh` (installation script) | Apache 2.0 (open source) |
+| `install.sh` (Linux installation script) | Apache 2.0 (open source) |
+| `install.ps1` (Windows installation script) | Apache 2.0 (open source) |
 | Log10x binaries and runtime | Proprietary (commercial license required) |
 
-The installation script is open source - you can freely use, modify, and distribute it.
+The installation scripts are open source — you can freely use, modify, and distribute them.
 
 **The Log10x software it installs requires a commercial license for production use.** Visit [log10x.com/pricing](https://log10x.com/pricing) for licensing options, or contact sales@log10x.com for enterprise inquiries.
 
