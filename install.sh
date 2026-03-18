@@ -24,7 +24,7 @@ set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="1.0.2"
-FLAVOR="cloud"
+FLAVOR="native"
 DOWNLOAD_CONFIG="true"
 DOWNLOAD_SYMBOLS="true"
 SETUP_ENV_VARS="true"
@@ -76,7 +76,10 @@ if [ "$FLAVOR" != "native" ]; then
 fi
 
 # Determine the OS type
-if [ -f /etc/os-release ]; then
+UNAME_S="$(uname -s)"
+if [ "$UNAME_S" = "Darwin" ]; then
+    OS="macos"
+elif [ -f /etc/os-release ]; then
     . /etc/os-release
     OS=$ID
     VERSION_ID=$VERSION_ID
@@ -90,7 +93,8 @@ ARCH="$(uname -m)"
 case $ARCH in
 	x86_64)
 		;;
-	aarch64)
+	aarch64|arm64)
+		ARCH="aarch64"  # normalize
 		;;
 	*)
 		echo "Unsupported arch $ARCH"
@@ -102,7 +106,7 @@ echo "Detected machine as $OS $VERSION_ID $ARCH"
 
 # Validate native on supported os only
 if [ "$FLAVOR" == "native" ]; then
-    if [[ "$OS" != "ubuntu" && "$OS" != "debian" ]]; then
+    if [[ "$OS" != "ubuntu" && "$OS" != "debian" && "$OS" != "macos" ]]; then
         echo "Unsupported operating system $OS for $FLAVOR"
         exit 1
     fi
@@ -117,7 +121,13 @@ INSTALL_CMD=""
 
 # Set artifact pattern based on OS, flavor, and architecture
 if [ "$FLAVOR" == "native" ]; then
-	if [[ "$ARCH" == "x86_64" ]]; then
+	if [ "$OS" == "macos" ]; then
+		if [[ "$ARCH" == "x86_64" ]]; then
+			ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-macos-amd64-native"
+		else
+			ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-macos-arm64-native"
+		fi
+	elif [[ "$ARCH" == "x86_64" ]]; then
     	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-amd64-native"
     elif [[ "$ARCH" == "aarch64" ]]; then
     	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-aarch64-native"
@@ -181,7 +191,7 @@ if ! command -v curl > /dev/null; then
     exit 1
 fi
 
-if [ "$SETUP_ENV_VARS" == "true" ]; then
+if [ "$SETUP_ENV_VARS" == "true" ] && [ "$OS" != "macos" ]; then
 	echo "Looking for sudo..."
 	if ! command -v sudo > /dev/null; then
 	    echo "Not found."
@@ -228,15 +238,30 @@ elif [ "$FLAVOR" == "native" ]; then
 	echo ""
 	echo "Installing native artifact..."
 	TENX_FLAVOR="tenx-edge"
-    mkdir -p "/opt/$TENX_FLAVOR/bin"
-    mv "$TEMP_DIR/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
-    chmod +x "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
-    ln -s "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
+	if [ "$OS" == "macos" ]; then
+		INSTALL_DIR="/usr/local"
+		mkdir -p "$INSTALL_DIR/bin"
+		mkdir -p "$INSTALL_DIR/etc/tenx/config"
+		mkdir -p "$INSTALL_DIR/etc/tenx/symbols"
+		mv "$TEMP_DIR/$ARTIFACT_FILE" "$INSTALL_DIR/bin/tenx"
+		chmod +x "$INSTALL_DIR/bin/tenx"
+	else
+		mkdir -p "/opt/$TENX_FLAVOR/bin"
+		mv "$TEMP_DIR/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
+		chmod +x "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE"
+		ln -s "/opt/$TENX_FLAVOR/bin/$ARTIFACT_FILE" "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
+	fi
 fi
 
-ln -s "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR" "/opt/$TENX_FLAVOR/bin/tenx"
+if [ "$OS" != "macos" ]; then
+	ln -s "/opt/$TENX_FLAVOR/bin/$TENX_FLAVOR" "/opt/$TENX_FLAVOR/bin/tenx"
+fi
 
-TENX_MODULES="/opt/$TENX_FLAVOR/lib/app/modules"
+if [ "$OS" == "macos" ]; then
+	TENX_MODULES="/usr/local/lib/tenx/modules"
+else
+	TENX_MODULES="/opt/$TENX_FLAVOR/lib/app/modules"
+fi
 
 if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	MODULES_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$MODULES_FILE"
@@ -253,7 +278,11 @@ if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$TENX_MODULES"
 fi
 
-TENX_CONFIG="/etc/tenx/config"
+if [ "$OS" == "macos" ]; then
+	TENX_CONFIG="/usr/local/etc/tenx/config"
+else
+	TENX_CONFIG="/etc/tenx/config"
+fi
 
 if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	CONFIG_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$CONFIG_FILE"
@@ -270,7 +299,11 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$TENX_CONFIG"
 fi
 
-TENX_SYMBOLS_PATH="/etc/tenx/symbols"
+if [ "$OS" == "macos" ]; then
+	TENX_SYMBOLS_PATH="/usr/local/etc/tenx/symbols"
+else
+	TENX_SYMBOLS_PATH="/etc/tenx/symbols"
+fi
 
 if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
 	mkdir -p "$TENX_SYMBOLS_PATH"
@@ -284,28 +317,48 @@ if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
 fi
 
 # Download and install LICENSE file
+if [ "$OS" == "macos" ]; then
+	LICENSE_DEST="/usr/local/etc/tenx/LICENSE"
+else
+	LICENSE_DEST="/opt/$TENX_FLAVOR/LICENSE"
+fi
 LICENSE_URL="https://github.com/$GITHUB_REPO/releases/download/$TENX_VERSION/$LICENSE_FILE"
-LICENSE_CURL="curl -f -L -o /opt/$TENX_FLAVOR/LICENSE $LICENSE_URL"
+LICENSE_CURL="curl -f -L -o $LICENSE_DEST $LICENSE_URL"
 
 echo ""
 echo "Downloading license: $LICENSE_CURL"
 $LICENSE_CURL
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
-	# Set up the environment variable
-	echo ""
-	echo "Setting up environment variables"
-	echo "export TENX_HOME=/opt/$TENX_FLAVOR" | sudo tee "/etc/profile.d/tenx.sh"
-	echo "export TENX_BIN=\$TENX_HOME/bin/$TENX_FLAVOR" | sudo tee -a "/etc/profile.d/tenx.sh"
-	echo "export PATH=\$TENX_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
-	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-		echo "export TENX_MODULES=$TENX_MODULES" | sudo tee -a "/etc/profile.d/tenx.sh"
-	fi
-	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-		echo "export TENX_CONFIG=$TENX_CONFIG" | sudo tee -a "/etc/profile.d/tenx.sh"
-	fi
-	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
-		echo "export TENX_SYMBOLS_PATH=$TENX_SYMBOLS_PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
+	if [ "$OS" == "macos" ]; then
+		echo ""
+		echo "The tenx binary is installed at /usr/local/bin/tenx (already on PATH)."
+		echo "Set these in your shell profile if needed:"
+		if [ "$DOWNLOAD_MODULES" == "true" ]; then
+			echo "  export TENX_MODULES=$TENX_MODULES"
+		fi
+		if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+			echo "  export TENX_CONFIG=$TENX_CONFIG"
+		fi
+		if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+			echo "  export TENX_SYMBOLS_PATH=$TENX_SYMBOLS_PATH"
+		fi
+	else
+		# Set up the environment variable
+		echo ""
+		echo "Setting up environment variables"
+		echo "export TENX_HOME=/opt/$TENX_FLAVOR" | sudo tee "/etc/profile.d/tenx.sh"
+		echo "export TENX_BIN=\$TENX_HOME/bin/$TENX_FLAVOR" | sudo tee -a "/etc/profile.d/tenx.sh"
+		echo "export PATH=\$TENX_HOME/bin:\$PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
+		if [ "$DOWNLOAD_MODULES" == "true" ]; then
+			echo "export TENX_MODULES=$TENX_MODULES" | sudo tee -a "/etc/profile.d/tenx.sh"
+		fi
+		if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+			echo "export TENX_CONFIG=$TENX_CONFIG" | sudo tee -a "/etc/profile.d/tenx.sh"
+		fi
+		if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+			echo "export TENX_SYMBOLS_PATH=$TENX_SYMBOLS_PATH" | sudo tee -a "/etc/profile.d/tenx.sh"
+		fi
 	fi
 fi
 
@@ -315,34 +368,42 @@ rm -rf $TEMP_DIR
 echo ""
 echo "Installation complete."
 echo ""
-echo "Installed 10x engine into - /opt/$TENX_FLAVOR"
+if [ "$OS" == "macos" ]; then
+	echo "Installed 10x engine into - /usr/local/bin/tenx"
+else
+	echo "Installed 10x engine into - /opt/$TENX_FLAVOR"
+fi
 echo ""
 echo "10x log file will be written into /var/log/tenx/"
 echo ""
 
 if [ "$SETUP_ENV_VARS" == "true" ]; then
-	echo "Configured the following environment variables:"
-	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
-	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
-	if [ "$DOWNLOAD_MODULES" == "true" ]; then
-		echo "    TENX_MODULES - $TENX_MODULES"
+	if [ "$OS" != "macos" ]; then
+		echo "Configured the following environment variables:"
+		echo "    TENX_HOME - /opt/$TENX_FLAVOR"
+		echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
+		if [ "$DOWNLOAD_MODULES" == "true" ]; then
+			echo "    TENX_MODULES - $TENX_MODULES"
+		fi
+		if [ "$DOWNLOAD_CONFIG" == "true" ]; then
+			echo "    TENX_CONFIG - $TENX_CONFIG"
+		fi
+		if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
+			echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
+		fi
+		echo ""
+		echo "Added bin - /opt/$TENX_FLAVOR/bin - to \$PATH"
+		echo ""
+		echo "Please restart your terminal or run 'source /etc/profile.d/tenx.sh' to apply the environment variables."
+		echo ""
 	fi
-	if [ "$DOWNLOAD_CONFIG" == "true" ]; then
-		echo "    TENX_CONFIG - $TENX_CONFIG"
-	fi
-	if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
-		echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
-	fi
-	echo ""
-	echo "Added bin - /opt/$TENX_FLAVOR/bin - to \$PATH"
-	echo ""
-	echo "Please restart your terminal or run 'source /etc/profile.d/tenx.sh' to apply the environment variables."
-	echo ""
 else
 	echo "Environment vars were not set."
 	echo "It is recommended to set the following environment variables for convenient usage -"
-	echo "    TENX_HOME - /opt/$TENX_FLAVOR"
-	echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
+	if [ "$OS" != "macos" ]; then
+		echo "    TENX_HOME - /opt/$TENX_FLAVOR"
+		echo "    TENX_BIN -  /opt/$TENX_FLAVOR/bin/$TENX_FLAVOR"
+	fi
 	if [ "$DOWNLOAD_MODULES" == "true" ]; then
 		echo "    TENX_MODULES - $TENX_MODULES"
 	fi
@@ -353,7 +414,9 @@ else
 		echo "    TENX_SYMBOLS_PATH - $TENX_SYMBOLS_PATH"
 	fi
 	echo ""
-	echo "Additionally, it's also recommended to add /opt/$TENX_FLAVOR/bin to the \$PATH"
+	if [ "$OS" != "macos" ]; then
+		echo "Additionally, it's also recommended to add /opt/$TENX_FLAVOR/bin to the \$PATH"
+	fi
 	echo ""
 fi
 
