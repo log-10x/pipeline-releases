@@ -23,7 +23,7 @@
 set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
-VERSION="1.0.20"
+VERSION="1.0.21"
 FLAVOR="native"
 DOWNLOAD_CONFIG="true"
 DOWNLOAD_SYMBOLS="true"
