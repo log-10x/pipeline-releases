@@ -25,6 +25,6 @@ Visit our [installation instructions](https://doc.log10x.com/install/) for detai
 
 The installation scripts are open source — you can freely use, modify, and distribute them.
 
-**The Log10x software it installs requires a commercial license for production use.** Visit [log10x.com/pricing](https://log10x.com/pricing) for licensing options, or contact sales@log10x.com for enterprise inquiries.
+**The Log10x software it installs requires a commercial license for production use.** Visit [log10x.com/pricing](https://www.log10x.com/pricing?utm_source=github&utm_medium=readme&utm_campaign=pipeline-releases&utm_content=inline) for licensing options, or contact sales@log10x.com for enterprise inquiries.
 
 See [LICENSE](LICENSE) for the proprietary license terms that apply to Log10x binaries. Each release includes a `LICENSE.txt` file that is automatically installed to `/opt/tenx-{flavor}/LICENSE` during installation.
