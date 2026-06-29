@@ -1,6 +1,6 @@
 # Log10x Pipeline Releases
 
-This repository hosts the public releases of [Log10x](https://doc.log10x.com).
+This repository hosts the public releases of [Log10x](https://www.log10x.com/?utm_source=github&utm_medium=readme&utm_campaign=pipeline-releases&utm_content=hero).
 
 Log10x is an **Observability runtime**, it is to log/trace data what Chrome V8 is to JavaScript:
 an engine for dynamically optimizing execution with the goal improving performance and reducing the cost of data processing.
