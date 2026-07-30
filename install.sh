@@ -104,12 +104,54 @@ esac
 
 echo "Detected machine as $OS $VERSION_ID $ARCH"
 
-# Validate native on supported os only
-if [ "$FLAVOR" == "native" ]; then
-    if [[ "$OS" != "ubuntu" && "$OS" != "debian" && "$OS" != "macos" ]]; then
-        echo "Unsupported operating system $OS for $FLAVOR"
-        exit 1
-    fi
+# Validate native by what it actually requires, not by distro name.
+#
+# This used to be a three-name allowlist -- ubuntu, debian, macos -- which
+# rejected every RPM-family distro by name while the binary ran on them fine.
+# Since native is the DEFAULT flavor, a RHEL/Rocky/Alma/Amazon Linux user
+# following the documented one-liner was told "Unsupported operating system"
+# for software that works on their machine.
+#
+# The real requirement is glibc >= 2.17. The Linux binary is built in Oracle
+# Linux 8 specifically so its floor is low; gating on distro name threw that
+# away. Verified by running tenx-edge-1.1.20 --version in each container:
+#
+#   rockylinux:9  OK    almalinux:9      OK    amazonlinux:2023  OK
+#   oraclelinux:9 OK    fedora:40        OK    opensuse/leap:15  OK
+#   debian:12     OK    ubuntu:22.04     OK    ubuntu:20.04      OK
+#
+# ubuntu:20.04 is the useful control: it ships glibc 2.31, so it runs the
+# current binary and would NOT have run 1.1.6, which required 2.34.
+if [ "$FLAVOR" == "native" ] && [ "$OS" != "macos" ]; then
+
+	GLIBC_MIN_MAJOR=2
+	GLIBC_MIN_MINOR=17
+
+	# getconf is in glibc itself; ldd is the fallback. Neither present means a
+	# non-glibc libc (Alpine/musl), where this binary genuinely will not run.
+	DETECTED_GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')"
+	if [ -z "$DETECTED_GLIBC" ]; then
+		DETECTED_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$')"
+	fi
+
+	if [ -z "$DETECTED_GLIBC" ]; then
+		echo "Could not detect glibc on $OS. The native build requires glibc ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} or newer."
+		echo "If this is a musl system such as Alpine, install with --flavor edge instead."
+		exit 1
+	fi
+
+	GLIBC_MAJOR="${DETECTED_GLIBC%%.*}"
+	GLIBC_MINOR="${DETECTED_GLIBC#*.}"
+	GLIBC_MINOR="${GLIBC_MINOR%%.*}"
+
+	if [ "$GLIBC_MAJOR" -lt "$GLIBC_MIN_MAJOR" ] || \
+	   { [ "$GLIBC_MAJOR" -eq "$GLIBC_MIN_MAJOR" ] && [ "$GLIBC_MINOR" -lt "$GLIBC_MIN_MINOR" ]; }; then
+		echo "glibc $DETECTED_GLIBC is older than the ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} the native build requires."
+		echo "Install with --flavor edge instead, which runs on the bundled JRE."
+		exit 1
+	fi
+
+	echo "Detected glibc $DETECTED_GLIBC (native requires ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}+)"
 fi
 
 ARTIFACT_PATTERN=""
