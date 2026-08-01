@@ -131,12 +131,20 @@ if [ "$FLAVOR" == "native" ] && [ "$OS" != "macos" ]; then
 	# non-glibc libc (Alpine/musl), where this binary genuinely will not run.
 	DETECTED_GLIBC="$(getconf GNU_LIBC_VERSION 2>/dev/null | awk '{print $2}')"
 	if [ -z "$DETECTED_GLIBC" ]; then
-		DETECTED_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$')"
+		# `|| true` is load-bearing: this script runs under `set -e`, and on a
+		# musl system ldd prints "musl libc (x86_64)" with no version, so grep
+		# matches nothing and exits 1. Without it the script dies HERE, silently,
+		# before reaching the message below that explains what went wrong.
+		# Verified on alpine:3 -- exit 1, no output past "Detected machine as".
+		DETECTED_GLIBC="$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$' || true)"
 	fi
 
 	if [ -z "$DETECTED_GLIBC" ]; then
 		echo "Could not detect glibc on $OS. The native build requires glibc ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} or newer."
-		echo "If this is a musl system such as Alpine, install with --flavor edge instead."
+		echo "This looks like a musl system such as Alpine. No 10x build runs here:"
+		echo "  - native  is linked against glibc"
+		echo "  - edge    ships only as .deb / .rpm, which Alpine does not install"
+		echo "Run 10x in a glibc container instead, e.g. the log10x/edge-10x image."
 		exit 1
 	fi
 
