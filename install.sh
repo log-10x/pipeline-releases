@@ -30,20 +30,27 @@ DOWNLOAD_SYMBOLS="true"
 SETUP_ENV_VARS="true"
 PRINT_ARTIFACT="false"
 
-USAGE="Usage: install.sh [--version <version>] [--flavor <compiler|runtime>] [--no-config] [--no-symbols] [--no-env-setup] [--print-artifact]
+USAGE="Usage: install.sh [--version <version>] [--flavor <compiler|runtime|runtime-jvm>] [--no-config] [--no-symbols] [--no-env-setup] [--print-artifact]
 
-Flavors:
-  runtime   (default) the native binary: reporter, receiver, retriever, MCP, CLI
-  compiler  the JVM build: everything runtime does, plus 'generate', compile, link
-            Linux only here. On macOS the compiler is a .dmg, installed with
-            'brew install --cask log-10x/tap/log10x-cloud'.
+Flavors are two axes, not one list: what the build can DO (run only, or also
+compile) and how it is EXECUTED (native image, or on a JVM).
 
-Retired:
-  edge      the jpackage JIT build. Removed -- see FLAVORS.md.
+                | JVM           | native
+  compile+run   | compiler      | -- impossible, compiling loads classes dynamically
+  run only      | runtime-jvm   | runtime
+
+  runtime      (default) the native binary: reporter, receiver, retriever, MCP, CLI
+  runtime-jvm  the same capabilities, run on a bundled JRE. Ships as .deb/.rpm
+               (Linux), .msi (Windows), .dmg (macOS). Use it where no native
+               binary is built -- that is Windows -- or where a JVM is wanted.
+  compiler     everything runtime does, plus 'generate', compile, link. Ships as
+               .deb/.rpm (Linux), .msi (Windows), .dmg (macOS). On macOS install
+               it with 'brew install --cask log-10x/tap/log10x-cloud'.
 
 Deprecated spellings, still accepted:
   cloud  -> compiler
-  native -> runtime"
+  native -> runtime
+  edge   -> runtime-jvm"
 
 # Argument parsing
 while [[ "$#" -gt 0 ]]; do
@@ -67,7 +74,7 @@ while [[ "$#" -gt 0 ]]; do
         --flavor)
             REQUESTED_FLAVOR=$(echo "$2" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
             case "$REQUESTED_FLAVOR" in
-                compiler|runtime)
+                compiler|runtime|runtime-jvm)
                     FLAVOR="$REQUESTED_FLAVOR"
                     ;;
                 cloud)
@@ -83,19 +90,18 @@ while [[ "$#" -gt 0 ]]; do
                     FLAVOR="runtime"
                     ;;
                 edge)
-                    echo "--flavor edge has been removed." >&2
-                    echo "" >&2
-                    echo "'edge' named the jpackage JIT build (.deb/.rpm with a bundled JRE)." >&2
-                    echo "It was kept for musl systems, and that justification was false: the" >&2
-                    echo "jpackage packages are .deb/.rpm, which Alpine cannot install either." >&2
-                    echo "" >&2
-                    echo "Use instead:" >&2
-                    echo "  --flavor runtime   the native binary (reporter, receiver, retriever, MCP, CLI)" >&2
-                    echo "  --flavor compiler  the JVM build, if you need 'generate' / compile / link" >&2
-                    exit 1
+                    # 'edge' was made a hard error when the jpackage JIT build was
+                    # retired as a FLAVOR. Retiring the name was right; retiring the
+                    # artifact was not, because it never stopped shipping -- every
+                    # release still carries tenx-edge-<v>.{deb,rpm,msi,dmg} -- and it
+                    # is the ONLY runtime that exists on Windows, which has no native
+                    # binary. The hard error therefore left Windows able to install
+                    # nothing but the compiler. So 'edge' maps, it does not fail.
+                    echo "Note: --flavor edge is the old name for 'runtime-jvm'. Use --flavor runtime-jvm." >&2
+                    FLAVOR="runtime-jvm"
                     ;;
                 *)
-                    echo "Invalid flavor: $REQUESTED_FLAVOR. Allowed values are 'compiler' / 'runtime'."
+                    echo "Invalid flavor: $REQUESTED_FLAVOR. Allowed values are 'compiler' / 'runtime' / 'runtime-jvm'."
                     exit 1
                     ;;
             esac
@@ -131,15 +137,28 @@ TENX_VERSION=$VERSION
 #
 # So: flavor names are the vocabulary users type, PACKAGE_ID is the wire format.
 # See FLAVORS.md for the full mapping across all five vocabularies.
+#
+# runtime and runtime-jvm share PACKAGE_ID 'edge': they are the same capability
+# set, packaged twice from the same release. The native binary is
+# tenx-edge-<v>-<arch>-native; the JVM one is tenx-edge-<v>.{deb,rpm,msi,dmg}.
+# One id, two asset shapes -- which is why the branch below still tests $FLAVOR,
+# not $PACKAGE_ID, to pick the pattern. Both land in /opt/tenx-edge on Linux,
+# which is what docker-images bakes into TENX_HOME.
 case "$FLAVOR" in
-	compiler) PACKAGE_ID="cloud" ;;
-	runtime)  PACKAGE_ID="edge" ;;
+	compiler)    PACKAGE_ID="cloud" ;;
+	runtime)     PACKAGE_ID="edge" ;;
+	runtime-jvm) PACKAGE_ID="edge" ;;
 esac
 
 TENX_FLAVOR="tenx-$PACKAGE_ID"
 
 DOWNLOAD_MODULES="true"
 
+# Only the native runtime is a bare binary with nothing alongside it, so only it
+# needs tenx-modules-<v>.tar.gz fetched separately. The jpackage packages --
+# compiler AND runtime-jvm -- carry their modules inside the .deb/.rpm, at
+# /opt/<pkg>/lib/app/modules. Downloading over that would replace what the
+# package manager owns with an untracked copy.
 if [ "$FLAVOR" != "runtime" ]; then
 	DOWNLOAD_MODULES="false"
 fi
@@ -211,8 +230,9 @@ if [ "$FLAVOR" == "runtime" ] && [ "$OS" != "macos" ]; then
 	if [ -z "$DETECTED_GLIBC" ]; then
 		echo "Could not detect glibc on $OS. The runtime build requires glibc ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} or newer."
 		echo "This looks like a musl system such as Alpine. No 10x build runs here:"
-		echo "  - runtime   is linked against glibc"
-		echo "  - compiler  ships only as .deb / .rpm, which Alpine does not install"
+		echo "  - runtime      is linked against glibc"
+		echo "  - runtime-jvm  ships only as .deb / .rpm, which Alpine does not install"
+		echo "  - compiler     ships only as .deb / .rpm, same"
 		echo "Run 10x in a glibc container instead, e.g. the log10x/edge-10x image."
 		exit 1
 	fi
@@ -225,8 +245,10 @@ if [ "$FLAVOR" == "runtime" ] && [ "$OS" != "macos" ]; then
 	   { [ "$GLIBC_MAJOR" -eq "$GLIBC_MIN_MAJOR" ] && [ "$GLIBC_MINOR" -lt "$GLIBC_MIN_MINOR" ]; }; then
 		echo "glibc $DETECTED_GLIBC is older than the ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} the runtime build requires."
 		echo "Run 10x in a container instead, e.g. the log10x/edge-10x image."
-		echo "(--flavor compiler installs the JVM build from .deb/.rpm, but that package"
-		echo " has its own glibc floor and has not been validated below ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}.)"
+		echo "(--flavor runtime-jvm is the same capability set on a bundled JRE, from"
+		echo " .deb/.rpm, and --flavor compiler adds generate/compile/link. Both are"
+		echo " jpackage builds with their own glibc floor, not validated below"
+		echo " ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}.)"
 		exit 1
 	fi
 
@@ -234,7 +256,7 @@ if [ "$FLAVOR" == "runtime" ] && [ "$OS" != "macos" ]; then
 fi
 
 ARTIFACT_PATTERN=""
-MACOS_COMPILER="false"
+MACOS_DMG="false"
 MODULES_FILE="tenx-modules-${TENX_VERSION}.tar.gz"
 CONFIG_FILE="tenx-config-${TENX_VERSION}.tar.gz"
 SYMBOLS_FILE="tenx-symbols-${TENX_VERSION}.10x.tar"
@@ -260,53 +282,79 @@ if [ "$FLAVOR" == "runtime" ]; then
     	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-aarch64-native"
     fi
 elif [ "$OS" == "macos" ]; then
-	# --flavor compiler on macOS.
+	# --flavor compiler and --flavor runtime-jvm on macOS. Both are DMGs.
 	#
-	# The compiler has no macOS artifact this script can install. It ships as
-	# tenx-cloud-<v>.dmg / tenx-cloud-<v>-intel.dmg, a disk image carrying
-	# tenx-cloud.app -- not a bare binary like the runtime, and not a package a
+	# Neither has a macOS artifact this script can install. They ship as
+	# tenx-<id>-<v>.dmg / tenx-<id>-<v>-intel.dmg, a disk image carrying an .app
+	# bundle -- not a bare binary like the native runtime, and not a package a
 	# package manager takes. Before this branch existed the chain below fell
 	# through to "Unsupported operating system: macos", which is false twice
 	# over: macOS is supported, and the flag the docs hand every reader is the
 	# one that hit it.
 	#
 	# The pattern is still set rather than exiting here, so --print-artifact can
-	# resolve the DMG. That asset is what log-10x/homebrew-tap's cask points at,
-	# and it is the one whose name-drift fails SILENTLY today: the tap job in
-	# log-10x/engine `find`s for it and exits 0 when nothing matches. Being able
-	# to assert it against a real release is worth more than an early exit; the
-	# install itself is refused a few lines below, after --print-artifact.
+	# resolve the DMG. For the compiler that asset is what log-10x/homebrew-tap's
+	# cask points at, and it is the one whose name-drift fails SILENTLY today:
+	# the tap job in log-10x/engine `find`s for it and exits 0 when nothing
+	# matches. Being able to assert it against a real release is worth more than
+	# an early exit; the install itself is refused a few lines below, after
+	# --print-artifact.
 	#
 	# -intel is a suffix, so `${TENX_FLAVOR}-${TENX_VERSION}\.dmg` matches the
 	# arm image only. Anchoring matters here: the looser [a-zA-Z0-9._-]*? form
-	# used by the deb/rpm branches would match both DMGs from either arch.
+	# used by the deb/rpm branches would match both DMGs from either arch, and
+	# with PACKAGE_ID=edge it would also match tenx-edge-<v>-macos-arm64-native.
 	if [[ "$ARCH" == "x86_64" ]]; then
 		ARTIFACT_PATTERN="${TENX_FLAVOR}-${TENX_VERSION}-intel\.dmg"
 	else
 		ARTIFACT_PATTERN="${TENX_FLAVOR}-${TENX_VERSION}\.dmg"
 	fi
-	MACOS_COMPILER="true"
-elif [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
+	MACOS_DMG="true"
+# The two branches below pick a PACKAGE FAMILY -- .deb or .rpm -- and they read
+# ID plus ID_LIKE, not ID alone.
+#
+# ID alone was a four-name allowlist: ubuntu, debian, centos, fedora, rhel. That
+# is the same distro-name gate 43d547a already removed from the native runtime,
+# left behind here because the runtime was the only flavor most people reached
+# for. runtime-jvm changes that: it exists precisely to be the .rpm/.deb runtime,
+# so the gate is now on the new flavor's main path. Verified before this change:
+#
+#   docker run --rm rockylinux:9 ... --flavor runtime-jvm --print-artifact
+#   -> ID="rocky" ID_LIKE="rhel centos fedora"
+#   -> Unsupported operating system: rocky      exit 1
+#
+# rocky, almalinux, oraclelinux and amazonlinux all take .rpm and all declare
+# rhel or fedora in ID_LIKE. /etc/os-release is sourced above, so ID_LIKE is
+# already in scope.
+elif [[ " $OS $ID_LIKE " == *" ubuntu "* || " $OS $ID_LIKE " == *" debian "* ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
     	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?amd64\.deb"
     elif [[ "$ARCH" == "aarch64" ]]; then
     	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?arm64\.deb"
     fi
     INSTALL_CMD="apt-get install -y"
-elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
+elif [[ " $OS $ID_LIKE " == *" rhel "* || " $OS $ID_LIKE " == *" fedora "* || " $OS $ID_LIKE " == *" centos "* ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
     	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?x86_64\.rpm"
     elif [[ "$ARCH" == "aarch64" ]]; then
     	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?aarch64\.rpm"
     fi
 
-    if [ command -v dnf &> /dev/null ]; then
+    # `if [ command -v dnf &> /dev/null ]` -- the previous form -- is `[` with the
+    # three arguments `command` `-v` `dnf`, so bash reads `-v` as a binary
+    # operator, prints "binary operator expected" into the discarded stream, and
+    # returns 2. The test was therefore ALWAYS false and this always picked yum.
+    # It worked only because yum is a dnf symlink on every distro that gets here.
+    if command -v dnf > /dev/null 2>&1; then
         INSTALL_CMD="dnf install -y"
     else
         INSTALL_CMD="yum install -y"
     fi
 else
     echo "Unsupported operating system: $OS"
+    echo "The .deb / .rpm flavors (compiler, runtime-jvm) are selected by package"
+    echo "family, read from ID and ID_LIKE in /etc/os-release. This system reports"
+    echo "ID=$OS ID_LIKE=${ID_LIKE:-<unset>}, which is neither debian- nor rhel-family."
     exit 1
 fi
 
@@ -339,29 +387,45 @@ if [ "$PRINT_ARTIFACT" == "true" ]; then
 	exit 0
 fi
 
-# The macOS compiler resolves to a DMG (above), and stops here.
+# The macOS compiler and runtime-jvm resolve to a DMG (above), and stop here.
 #
-# Mounting it and copying tenx-cloud.app somewhere is not the whole job. The
-# Homebrew cask also downloads config and symbols, writes the /usr/local/bin/tenx
+# Mounting it and copying the .app somewhere is not the whole job. The Homebrew
+# cask also downloads config and symbols, writes the /usr/local/bin/tenx
 # launcher that sets TENX_CONFIG and TENX_SYMBOLS_PATH before exec'ing into the
 # bundle, and removes all of it on uninstall. This script installs its own macOS
 # runtime to /usr/local/bin/tenx (see the runtime branch below), so a second
 # unmanaged copy here would contend for that exact path with no uninstall on
 # either side. One managed macOS install path is the whole point.
-if [ "$MACOS_COMPILER" == "true" ]; then
-	echo "The compiler flavor is installed with Homebrew on macOS, not by this script."
-	echo ""
-	echo "  brew install --cask log-10x/tap/log10x-cloud"
-	echo ""
-	echo "The cask installs tenx-cloud.app plus config and symbols, and puts a"
-	echo "'tenx' launcher on PATH. It is the same DMG this script would fetch:"
+if [ "$MACOS_DMG" == "true" ]; then
 	# ARTIFACT_PATTERN is a regex; the '.' is escaped for grep -E. Strip the
 	# backslash so the line reads as the file name it is naming.
-	echo "  ${ARTIFACT_PATTERN//\\/}"
-	echo ""
-	echo "For the native runtime instead (no 'generate' / compile / link), this"
-	echo "script does handle macOS:"
-	echo "  install.sh --flavor runtime"
+	DMG_NAME="${ARTIFACT_PATTERN//\\/}"
+	if [ "$FLAVOR" == "compiler" ]; then
+		echo "The compiler flavor is installed with Homebrew on macOS, not by this script."
+		echo ""
+		echo "  brew install --cask log-10x/tap/log10x-cloud"
+		echo ""
+		echo "The cask installs tenx-cloud.app plus config and symbols, and puts a"
+		echo "'tenx' launcher on PATH. It is the same DMG this script would fetch:"
+		echo "  $DMG_NAME"
+	else
+		# runtime-jvm on macOS. The DMG exists in every release and
+		# --print-artifact resolves it, but there is no cask for it and no
+		# reason to reach for it: macOS is one of the platforms where the
+		# native runtime IS built, and it is the same capability set without
+		# the JVM. runtime-jvm earns its place on Windows, where no native
+		# binary is published at all.
+		echo "The runtime-jvm flavor ships on macOS as a .dmg, which this script does not install."
+		echo ""
+		echo "  $DMG_NAME"
+		echo ""
+		echo "On macOS you almost certainly want the native runtime instead. Same"
+		echo "capabilities, no JVM, and this script installs it:"
+		echo "  install.sh --flavor runtime"
+		echo ""
+		echo "runtime-jvm exists for platforms with no native build -- that is Windows,"
+		echo "via install.ps1."
+	fi
 	exit 1
 fi
 
@@ -390,7 +454,11 @@ echo " '----------------' '----------------' '----------------' '---------------
 # The install destination is not one path, so it is computed rather than guessed:
 #   runtime + macos   ->  /usr/local             (binary moved to bin/tenx)
 #   runtime + linux   ->  /opt/tenx-edge         (PACKAGE_ID is edge)
+#   runtime-jvm       ->  /opt/tenx-edge         (deb/rpm; PACKAGE_ID is edge)
 #   compiler          ->  /opt/$TENX_FLAVOR      (deb/rpm; PACKAGE_ID is cloud)
+# runtime-jvm and runtime therefore SHARE /opt/tenx-edge, which is correct and
+# is what the jpackage .deb creates. They cannot be installed side by side, and
+# the guard below is what says so instead of failing later on `ln -s`.
 # Every one of those paths ends by creating a `tenx` launcher in bin, so that is
 # what gets tested -- a directory alone is not evidence of an install, and for
 # macOS /usr/local always exists.

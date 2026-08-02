@@ -23,15 +23,29 @@
 # Usage: irm https://raw.githubusercontent.com/log-10x/pipeline-releases/main/install.ps1 | iex
 #
 # Options (set as environment variables before running):
-#   $env:TENX_VERSION  = "1.0.0"      # specific version (default: latest)
-#   $env:TENX_FLAVOR   = "compiler"   # compiler (default). See FLAVORS.md.
-#   $env:TENX_NO_CONFIG = "true"      # skip config download
+#   $env:TENX_VERSION  = "1.0.0"         # specific version (default: latest)
+#   $env:TENX_FLAVOR   = "runtime-jvm"   # runtime-jvm (default) or compiler. See FLAVORS.md.
+#   $env:TENX_NO_CONFIG = "true"         # skip config download
+#   $env:TENX_PRINT_ARTIFACT = "true"    # resolve the MSI, print it, install nothing
+#
+# Windows gets two of the three flavors:
+#
+#                 | JVM           | native
+#   compile+run   | compiler      | -- impossible, compiling loads classes dynamically
+#   run only      | runtime-jvm   | -- NOT BUILT for Windows
+#
+# There is no Windows native image, so 'runtime' is not installable here and
+# 'runtime-jvm' is the default: it is the runtime, executed on a bundled JRE.
 
 $ErrorActionPreference = "Stop"
 
 $Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.38" }
-$RequestedFlavor = if ($env:TENX_FLAVOR) { "$env:TENX_FLAVOR".Trim().ToLowerInvariant() } else { "compiler" }
+# Default is runtime-jvm, matching install.sh, whose default is the runtime.
+# Most people installing 10x want to RUN it; 'generate'/compile/link is the
+# smaller audience and is what 'compiler' is for.
+$RequestedFlavor = if ($env:TENX_FLAVOR) { "$env:TENX_FLAVOR".Trim().ToLowerInvariant() } else { "runtime-jvm" }
 $SkipConfig = $env:TENX_NO_CONFIG -eq "true"
+$PrintArtifact = $env:TENX_PRINT_ARTIFACT -eq "true"
 $Repo = "log-10x/pipeline-releases"
 
 # --- Validate the flavor, and map it to a package id ---
@@ -71,19 +85,39 @@ switch ($RequestedFlavor) {
         $Flavor = "compiler"; $PackageId = "cloud"
         break
     }
-    { $_ -in "runtime", "native" } {
-        Write-Host "  ERROR: there is no Windows artifact for the runtime flavor." -ForegroundColor Red
-        Write-Host "  The native binary is published for Linux and macOS only; the release" -ForegroundColor Red
-        Write-Host "  carries no tenx-*-windows-*-native asset. Use TENX_FLAVOR=compiler." -ForegroundColor Red
-        exit 1
-    }
+    "runtime-jvm" { $Flavor = "runtime-jvm"; $PackageId = "edge"; break }
     "edge" {
-        Write-Host "  ERROR: the 'edge' flavor has been removed (the jpackage JIT build)." -ForegroundColor Red
-        Write-Host "  Use TENX_FLAVOR=compiler." -ForegroundColor Red
+        # This was a hard error, and that error is the bug this branch fixes.
+        #
+        # 'edge' was retired as a flavor NAME when its musl justification turned
+        # out to be false. Retiring the name was right. What went with it by
+        # accident was the only runtime Windows has: the tenx-edge MSI never
+        # stopped being published, and Windows has no native image, so after the
+        # rename this script could install the compiler and nothing else. Anyone
+        # who wanted to just RUN 10x on Windows was told their flavor was invalid.
+        Write-Host "  Note: TENX_FLAVOR=edge is the old name for 'runtime-jvm'." -ForegroundColor DarkGray
+        $Flavor = "runtime-jvm"; $PackageId = "edge"
+        break
+    }
+    { $_ -in "runtime", "native" } {
+        # Deliberately NOT folded into the default 'invalid flavor' case. The
+        # flavor is spelled correctly and exists; the ARTIFACT does not, on this
+        # platform only. Telling a Windows user their spelling is invalid sends
+        # them to re-read the docs, where 'runtime' is exactly what they will
+        # find, because it is the default everywhere else.
+        Write-Host "  ERROR: the native runtime is not built for Windows." -ForegroundColor Red
+        Write-Host ""  -ForegroundColor Red
+        Write-Host "  'runtime' is a real flavor and it is the default on Linux and macOS," -ForegroundColor Red
+        Write-Host "  but it is a GraalVM native image and no Windows one is produced. The" -ForegroundColor Red
+        Write-Host "  release carries no tenx-*-windows-*-native asset." -ForegroundColor Red
+        Write-Host ""  -ForegroundColor Red
+        Write-Host "  Use TENX_FLAVOR=runtime-jvm. Same capabilities -- reporter, receiver," -ForegroundColor Yellow
+        Write-Host "  retriever, MCP server, CLI -- run on a bundled JRE, shipped as an MSI." -ForegroundColor Yellow
+        Write-Host "  It is the default for this installer." -ForegroundColor Yellow
         exit 1
     }
     default {
-        Write-Host "  ERROR: invalid TENX_FLAVOR '$RequestedFlavor'. Allowed: compiler" -ForegroundColor Red
+        Write-Host "  ERROR: invalid TENX_FLAVOR '$RequestedFlavor'. Allowed: compiler, runtime-jvm" -ForegroundColor Red
         exit 1
     }
 }
@@ -104,8 +138,17 @@ if ($Version -eq "latest") {
 # --- Check for existing installation ---
 # The MSI decides this path, and it is named for the package id, not the
 # flavor. C:\Program Files\tenx-cloud is what tenx-cloud-<v>.msi creates.
+#
+# runtime-jvm and compiler have DIFFERENT prefixes here (tenx-edge, tenx-cloud),
+# unlike Linux where the native runtime and runtime-jvm share /opt/tenx-edge. So
+# on Windows the two can coexist, and this guard only ever fires on reinstalling
+# the same flavor.
+#
+# TENX_PRINT_ARTIFACT skips the guard: it resolves an asset, it does not care
+# what is on disk, and refusing to answer because something is installed would
+# make it useless for asserting the mapping on a machine that has 10x.
 $InstallDir = "C:\Program Files\tenx-$PackageId"
-if (Test-Path $InstallDir) {
+if (-not $PrintArtifact -and (Test-Path $InstallDir)) {
     Write-Host "  Existing installation found at $InstallDir" -ForegroundColor Yellow
     Write-Host "  Remove it first or use a different flavor." -ForegroundColor Yellow
     exit 1
@@ -124,6 +167,25 @@ $msiAsset = $release.assets | Where-Object { $_.name -match "tenx-$PackageIdPatt
 if (-not $msiAsset) {
     Write-Host "  ERROR: No MSI artifact found for tenx-$PackageId version $Version" -ForegroundColor Red
     exit 1
+}
+
+# --- TENX_PRINT_ARTIFACT: resolve the MSI, print it, install nothing ---
+#
+# The counterpart of install.sh --print-artifact, and it exists for the same
+# reason: so the flavor->asset mapping is asserted against a real release rather
+# than assumed. It also makes this script testable off Windows -- everything
+# above is flavor validation and a GitHub API read, both of which run anywhere
+# pwsh runs, so `docker run mcr.microsoft.com/powershell` can check that
+# runtime-jvm resolves tenx-edge-<v>.msi and compiler resolves tenx-cloud-<v>.msi.
+# Nothing below this point can run outside Windows: msiexec, "C:\Program Files",
+# and machine-scope [Environment]::SetEnvironmentVariable are all Windows-only.
+if ($PrintArtifact) {
+    Write-Host "  flavor:     $Flavor"
+    Write-Host "  package id: $PackageId"
+    Write-Host "  version:    $Version"
+    Write-Host "  artifact:   $($msiAsset.name)"
+    Write-Host "  url:        $($msiAsset.browser_download_url)"
+    exit 0
 }
 
 # --- Create temp directory ---
