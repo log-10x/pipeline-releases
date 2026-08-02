@@ -34,6 +34,41 @@ $Flavor = if ($env:TENX_FLAVOR) { $env:TENX_FLAVOR } else { "cloud" }
 $SkipConfig = $env:TENX_NO_CONFIG -eq "true"
 $Repo = "log-10x/pipeline-releases"
 
+# --- Validate flavor ---
+#
+# install.sh has hard-errored on an unknown --flavor since it was written; this
+# script had no equivalent, and the unvalidated value reached three places:
+#
+#   $InstallDir = "C:\Program Files\tenx-$Flavor"          (a directory name)
+#   $_.name -match "tenx-$Flavor.*\.msi"                   (a .NET REGEX)
+#   TENX_BIN = "$InstallDir\tenx-$Flavor.exe"              (machine-wide, permanent)
+#
+# PowerShell's -match is case-insensitive and unanchored, so the flavor was a
+# regex pattern rather than a token, and `Select-Object -First 1` then took
+# whatever it happened to hit. Replaying the asset list of release 1.1.37
+# through that expression: TENX_FLAVOR=e matched tenx-edge-1.1.37.msi and would
+# have installed the edge MSI into "C:\Program Files\tenx-e" and set a
+# machine-wide TENX_BIN to tenx-e.exe -- a file that never exists. That install
+# reports success and leaves a broken pointer behind. TENX_FLAVOR='cloud|edge'
+# matched an .rpm and would have handed it to msiexec /i.
+#
+# -notcontains on a literal array is exact membership, not a pattern match, so
+# it closes that off at the source. The allowed set is cloud/edge because those
+# are the only MSIs the release ships; there is no Windows native artifact
+# (`tenx-edge-<v>-*-native` are bare Linux and macOS binaries), so passing the
+# Linux installer's third flavor here can only ever fail.
+#
+# This runs before either Invoke-RestMethod so a bad flavor costs zero network.
+$Flavor = "$Flavor".Trim().ToLowerInvariant()
+$AllowedFlavors = @('cloud', 'edge')
+if ($AllowedFlavors -notcontains $Flavor) {
+    Write-Host ""
+    Write-Host "  ERROR: Invalid flavor '$Flavor'." -ForegroundColor Red
+    Write-Host "  Allowed values: $($AllowedFlavors -join ' / '). Set `$env:TENX_FLAVOR before running." -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
+
 Write-Host ""
 Write-Host "  Log10x Installer for Windows" -ForegroundColor Cyan
 Write-Host "  Version: $Version | Flavor: $Flavor" -ForegroundColor DarkGray
@@ -58,7 +93,12 @@ if (Test-Path $InstallDir) {
 # --- Find MSI artifact ---
 Write-Host "  Fetching release artifacts..." -ForegroundColor DarkGray
 $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/tags/$Version"
-$msiAsset = $release.assets | Where-Object { $_.name -match "tenx-$Flavor.*\.msi" } | Select-Object -First 1
+# Defence in depth: the flavor is already an exact member of $AllowedFlavors, so
+# escaping it changes nothing today. It is here so that adding a flavor whose
+# name contains a regex metacharacter cannot quietly turn this back into a
+# pattern match.
+$FlavorPattern = [regex]::Escape($Flavor)
+$msiAsset = $release.assets | Where-Object { $_.name -match "tenx-$FlavorPattern.*\.msi" } | Select-Object -First 1
 
 if (-not $msiAsset) {
     Write-Host "  ERROR: No MSI artifact found for tenx-$Flavor version $Version" -ForegroundColor Red
@@ -102,10 +142,25 @@ try {
         Copy-Item $symbolsPath "$ConfigDir\symbols\"
     }
 
+    # --- Verify the MSI laid down what the environment is about to point at ---
+    #
+    # TENX_BIN is composed from $Flavor while the file it names comes from the
+    # MSI. Writing it machine-wide without checking is how a successful-looking
+    # install ends up with a permanent pointer to a file that does not exist.
+    $TenxExe = "$InstallDir\tenx-$Flavor.exe"
+    if (-not (Test-Path $TenxExe)) {
+        Write-Host ""
+        Write-Host "  ERROR: The MSI installed, but $TenxExe is missing." -ForegroundColor Red
+        Write-Host "  Flavor '$Flavor' does not match the contents of $($msiAsset.name)." -ForegroundColor Red
+        Write-Host "  Environment variables were NOT set." -ForegroundColor Red
+        Write-Host ""
+        exit 1
+    }
+
     # --- Set environment variables (machine-level) ---
     Write-Host "  Configuring environment variables..." -ForegroundColor Cyan
     [Environment]::SetEnvironmentVariable("TENX_HOME", $InstallDir, "Machine")
-    [Environment]::SetEnvironmentVariable("TENX_BIN", "$InstallDir\tenx-$Flavor.exe", "Machine")
+    [Environment]::SetEnvironmentVariable("TENX_BIN", $TenxExe, "Machine")
     [Environment]::SetEnvironmentVariable("TENX_MODULES", "$InstallDir\lib\app\modules", "Machine")
     [Environment]::SetEnvironmentVariable("TENX_CONFIG", "C:\ProgramData\tenx\config", "Machine")
     [Environment]::SetEnvironmentVariable("TENX_SYMBOLS_PATH", "C:\ProgramData\tenx\symbols", "Machine")

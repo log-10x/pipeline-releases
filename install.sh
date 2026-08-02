@@ -218,11 +218,40 @@ echo "| |              | | |              | | |              | | |              
 echo "| '--------------' | '--------------' | '--------------' | '--------------' | '--------------' | '--------------' |"
 echo " '----------------' '----------------' '----------------' '----------------' '----------------' '----------------' "
 
+# Where THIS run will install. The guard below used to test $TENX_HOME, which
+# this script never assigns anywhere -- `grep -n '^[[:space:]]*TENX_HOME=' `
+# returned nothing. The only thing that ever exports it is /etc/profile.d/tenx.sh,
+# written at the END of a previous successful install, and the documented entry
+# point is `curl ... | sh`, which is not a login shell and does not source
+# /etc/profile.d. So on the path every user actually takes, $TENX_HOME was empty,
+# `[ -d "" ]` was false, and the guard never fired: the re-install ran to the
+# `ln -s` calls below and died on symlinks that already existed, several minutes
+# and one package download later.
+#
+# The install destination is not one path, so it is computed rather than guessed:
+#   native + macos   ->  /usr/local           (binary moved to bin/tenx)
+#   native + linux   ->  /opt/tenx-edge       (TENX_FLAVOR is reset to tenx-edge)
+#   edge|cloud       ->  /opt/tenx-$FLAVOR    (deb/rpm)
+# Every one of those paths ends by creating a `tenx` launcher in bin, so that is
+# what gets tested -- a directory alone is not evidence of an install, and for
+# macOS /usr/local always exists.
+if [ "$FLAVOR" == "native" ]; then
+	if [ "$OS" == "macos" ]; then
+		TENX_HOME="/usr/local"
+	else
+		TENX_HOME="/opt/tenx-edge"
+	fi
+else
+	TENX_HOME="/opt/$TENX_FLAVOR"
+fi
+
 echo "Looking for a previous installation of the 10x engine..."
-if [ -d "$TENX_HOME" ]; then
+if [ -e "$TENX_HOME/bin/tenx" ] || [ -L "$TENX_HOME/bin/tenx" ]; then
     echo ""
     echo "======================================================================================================"
     echo " You already have the 10x engine installed at - $TENX_HOME"
+    echo ""
+    echo " Remove $TENX_HOME and re-run this script to reinstall."
     echo "======================================================================================================"
     echo ""
     exit 0
