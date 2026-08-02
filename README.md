@@ -17,19 +17,32 @@ Visit our [installation instructions](https://doc.log10x.com/install/) for detai
 
 ## Flavors
 
+Two axes: what the build can do, and how it executes.
+
+| | JVM | native |
+|---|---|---|
+| **compile + run** | `compiler` | impossible, a native image cannot load classes it compiles |
+| **run only** | `runtime-jvm` | `runtime` |
+
 ```sh
 # the native binary: Reporter, Receiver, Retriever, MCP, CLI  (default)
 curl .../install.sh | bash -s -- --flavor runtime
 
-# the JVM build: everything above, plus generate / compile / link  (Linux)
+# the same capabilities on a bundled JRE, as .deb / .rpm
+curl .../install.sh | bash -s -- --flavor runtime-jvm
+
+# everything above, plus generate / compile / link
 curl .../install.sh | bash -s -- --flavor compiler
 
-# the compiler on macOS ships as a .dmg, so it comes from the tap
+# the macOS .dmg flavors come from the tap, not from install.sh
 brew install --cask log-10x/tap/log10x-cloud
 ```
 
-`edge` is retired. `cloud` and `native` are the old names for `compiler` and
-`runtime` and still work.
+Windows has no native image, so `install.ps1` offers `runtime-jvm` (default) and
+`compiler`.
+
+`cloud`, `native` and `edge` are the old names for `compiler`, `runtime` and
+`runtime-jvm`. All three still work, with a note on stderr.
 
 Flavor names are not the same strings as the file names. See [FLAVORS.md](FLAVORS.md)
 for the mapping, and for the list of patterns that must change together if a
