@@ -607,7 +607,11 @@ if [ "$DOWNLOAD_MODULES" == "true" ]; then
 	echo "Unpacking 10x modules into $TENX_MODULES"
 
 	mkdir -p "$TENX_MODULES"
-	tar -xzf "$TEMP_DIR/$MODULES_FILE" -C "$TENX_MODULES"
+	# --no-same-owner: the tarballs carry uid/gid 1001 from the build machine, and as
+	# root tar would restore that ownership verbatim. That leaves the installed tree
+	# owned by whatever local account happens to hold 1001, and in container images it
+	# makes Filebeat refuse its own config with "must be owned by the user identifier".
+	tar --no-same-owner -xzf "$TEMP_DIR/$MODULES_FILE" -C "$TENX_MODULES"
 fi
 
 if [ "$OS" == "macos" ]; then
@@ -628,7 +632,7 @@ if [ "$DOWNLOAD_CONFIG" == "true" ]; then
 	echo "Unpacking 10x configuration into $TENX_CONFIG"
 
 	mkdir -p "$TENX_CONFIG"
-	tar -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$TENX_CONFIG"
+	tar --no-same-owner -xzf "$TEMP_DIR/$CONFIG_FILE" -C "$TENX_CONFIG"
 fi
 
 if [ "$OS" == "macos" ]; then
