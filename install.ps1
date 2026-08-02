@@ -23,50 +23,69 @@
 # Usage: irm https://raw.githubusercontent.com/log-10x/pipeline-releases/main/install.ps1 | iex
 #
 # Options (set as environment variables before running):
-#   $env:TENX_VERSION  = "1.0.0"   # specific version (default: latest)
-#   $env:TENX_FLAVOR   = "cloud"   # cloud or edge (default: cloud)
-#   $env:TENX_NO_CONFIG = "true"   # skip config download
+#   $env:TENX_VERSION  = "1.0.0"      # specific version (default: latest)
+#   $env:TENX_FLAVOR   = "compiler"   # compiler (default). See FLAVORS.md.
+#   $env:TENX_NO_CONFIG = "true"      # skip config download
 
 $ErrorActionPreference = "Stop"
 
 $Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.37" }
-$Flavor = if ($env:TENX_FLAVOR) { $env:TENX_FLAVOR } else { "cloud" }
+$RequestedFlavor = if ($env:TENX_FLAVOR) { "$env:TENX_FLAVOR".Trim().ToLowerInvariant() } else { "compiler" }
 $SkipConfig = $env:TENX_NO_CONFIG -eq "true"
 $Repo = "log-10x/pipeline-releases"
 
-# --- Validate flavor ---
+# --- Validate the flavor, and map it to a package id ---
 #
-# install.sh has hard-errored on an unknown --flavor since it was written; this
-# script had no equivalent, and the unvalidated value reached three places:
+# Two things happen here, and the ordering matters: nothing downstream may see a
+# value that did not come out of this switch.
 #
-#   $InstallDir = "C:\Program Files\tenx-$Flavor"          (a directory name)
-#   $_.name -match "tenx-$Flavor.*\.msi"                   (a .NET REGEX)
-#   TENX_BIN = "$InstallDir\tenx-$Flavor.exe"              (machine-wide, permanent)
+# 1. VALIDATION. Before 48cf776 this script had no flavor check at all, and the
+#    unvalidated $env:TENX_FLAVOR reached three places, one of them a .NET regex:
 #
-# PowerShell's -match is case-insensitive and unanchored, so the flavor was a
-# regex pattern rather than a token, and `Select-Object -First 1` then took
-# whatever it happened to hit. Replaying the asset list of release 1.1.37
-# through that expression: TENX_FLAVOR=e matched tenx-edge-1.1.37.msi and would
-# have installed the edge MSI into "C:\Program Files\tenx-e" and set a
-# machine-wide TENX_BIN to tenx-e.exe -- a file that never exists. That install
-# reports success and leaves a broken pointer behind. TENX_FLAVOR='cloud|edge'
-# matched an .rpm and would have handed it to msiexec /i.
+#      $InstallDir = "C:\Program Files\tenx-$Flavor"     (a directory name)
+#      $_.name -match "tenx-$Flavor.*\.msi"              (a REGEX, not a token)
+#      TENX_BIN = "$InstallDir\tenx-$Flavor.exe"         (machine-wide, permanent)
 #
-# -notcontains on a literal array is exact membership, not a pattern match, so
-# it closes that off at the source. The allowed set is cloud/edge because those
-# are the only MSIs the release ships; there is no Windows native artifact
-# (`tenx-edge-<v>-*-native` are bare Linux and macOS binaries), so passing the
-# Linux installer's third flavor here can only ever fail.
+#    -match is case-insensitive and unanchored, so the flavor was a pattern, and
+#    `Select-Object -First 1` took whatever it hit. Against the real asset list
+#    of release 1.1.37, TENX_FLAVOR=e resolved tenx-edge-1.1.37.msi: the edge MSI
+#    into "C:\Program Files\tenx-e", with a machine-wide TENX_BIN pointing at
+#    tenx-e.exe, a file that never exists. The install reported success.
+#    TENX_FLAVOR='cloud|edge' resolved an .rpm and would have handed it to
+#    msiexec /i.
 #
-# This runs before either Invoke-RestMethod so a bad flavor costs zero network.
-$Flavor = "$Flavor".Trim().ToLowerInvariant()
-$AllowedFlavors = @('cloud', 'edge')
-if ($AllowedFlavors -notcontains $Flavor) {
-    Write-Host ""
-    Write-Host "  ERROR: Invalid flavor '$Flavor'." -ForegroundColor Red
-    Write-Host "  Allowed values: $($AllowedFlavors -join ' / '). Set `$env:TENX_FLAVOR before running." -ForegroundColor Red
-    Write-Host ""
-    exit 1
+#    `switch` on string labels is exact, case-insensitive comparison -- not a
+#    pattern match -- so it closes that off the same way the `-notcontains`
+#    literal-array gate it replaces did. Every path out of it either assigns
+#    $PackageId from a literal or exits 1. It runs before either
+#    Invoke-RestMethod, so a bad flavor still costs zero network.
+#
+# 2. MAPPING. $PackageId is the release-asset and on-disk token, and it is
+#    deliberately NOT the flavor name: the MSI is tenx-cloud-<v>.msi and it
+#    installs to "C:\Program Files\tenx-cloud" whatever the flag is called.
+#    See FLAVORS.md.
+switch ($RequestedFlavor) {
+    "compiler" { $Flavor = "compiler"; $PackageId = "cloud"; break }
+    "cloud"    {
+        Write-Host "  Note: TENX_FLAVOR=cloud is the old name for 'compiler'." -ForegroundColor DarkGray
+        $Flavor = "compiler"; $PackageId = "cloud"
+        break
+    }
+    { $_ -in "runtime", "native" } {
+        Write-Host "  ERROR: there is no Windows artifact for the runtime flavor." -ForegroundColor Red
+        Write-Host "  The native binary is published for Linux and macOS only; the release" -ForegroundColor Red
+        Write-Host "  carries no tenx-*-windows-*-native asset. Use TENX_FLAVOR=compiler." -ForegroundColor Red
+        exit 1
+    }
+    "edge" {
+        Write-Host "  ERROR: the 'edge' flavor has been removed (the jpackage JIT build)." -ForegroundColor Red
+        Write-Host "  Use TENX_FLAVOR=compiler." -ForegroundColor Red
+        exit 1
+    }
+    default {
+        Write-Host "  ERROR: invalid TENX_FLAVOR '$RequestedFlavor'. Allowed: compiler" -ForegroundColor Red
+        exit 1
+    }
 }
 
 Write-Host ""
@@ -83,7 +102,9 @@ if ($Version -eq "latest") {
 }
 
 # --- Check for existing installation ---
-$InstallDir = "C:\Program Files\tenx-$Flavor"
+# The MSI decides this path, and it is named for the package id, not the
+# flavor. C:\Program Files\tenx-cloud is what tenx-cloud-<v>.msi creates.
+$InstallDir = "C:\Program Files\tenx-$PackageId"
 if (Test-Path $InstallDir) {
     Write-Host "  Existing installation found at $InstallDir" -ForegroundColor Yellow
     Write-Host "  Remove it first or use a different flavor." -ForegroundColor Yellow
@@ -93,15 +114,15 @@ if (Test-Path $InstallDir) {
 # --- Find MSI artifact ---
 Write-Host "  Fetching release artifacts..." -ForegroundColor DarkGray
 $release = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases/tags/$Version"
-# Defence in depth: the flavor is already an exact member of $AllowedFlavors, so
-# escaping it changes nothing today. It is here so that adding a flavor whose
-# name contains a regex metacharacter cannot quietly turn this back into a
-# pattern match.
-$FlavorPattern = [regex]::Escape($Flavor)
-$msiAsset = $release.assets | Where-Object { $_.name -match "tenx-$FlavorPattern.*\.msi" } | Select-Object -First 1
+# Defence in depth: $PackageId can only be a literal assigned by the switch
+# above, so escaping it changes nothing today. It is here so that adding a
+# package id containing a regex metacharacter cannot quietly turn this back into
+# a pattern match.
+$PackageIdPattern = [regex]::Escape($PackageId)
+$msiAsset = $release.assets | Where-Object { $_.name -match "tenx-$PackageIdPattern.*\.msi" } | Select-Object -First 1
 
 if (-not $msiAsset) {
-    Write-Host "  ERROR: No MSI artifact found for tenx-$Flavor version $Version" -ForegroundColor Red
+    Write-Host "  ERROR: No MSI artifact found for tenx-$PackageId version $Version" -ForegroundColor Red
     exit 1
 }
 
@@ -144,14 +165,18 @@ try {
 
     # --- Verify the MSI laid down what the environment is about to point at ---
     #
-    # TENX_BIN is composed from $Flavor while the file it names comes from the
-    # MSI. Writing it machine-wide without checking is how a successful-looking
+    # TENX_BIN is composed here while the file it names comes from the MSI.
+    # Writing it machine-wide without checking is how a successful-looking
     # install ends up with a permanent pointer to a file that does not exist.
-    $TenxExe = "$InstallDir\tenx-$Flavor.exe"
+    #
+    # The exe is named for the PACKAGE ID, not the flavor: tenx-cloud-<v>.msi
+    # lays down tenx-cloud.exe. Composing it from $Flavor here would make this
+    # guard fire on every correct install of --flavor compiler.
+    $TenxExe = "$InstallDir\tenx-$PackageId.exe"
     if (-not (Test-Path $TenxExe)) {
         Write-Host ""
         Write-Host "  ERROR: The MSI installed, but $TenxExe is missing." -ForegroundColor Red
-        Write-Host "  Flavor '$Flavor' does not match the contents of $($msiAsset.name)." -ForegroundColor Red
+        Write-Host "  Package id '$PackageId' does not match the contents of $($msiAsset.name)." -ForegroundColor Red
         Write-Host "  Environment variables were NOT set." -ForegroundColor Red
         Write-Host ""
         exit 1

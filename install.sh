@@ -24,10 +24,26 @@ set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
 VERSION="1.1.37"
-FLAVOR="native"
+FLAVOR="runtime"
 DOWNLOAD_CONFIG="true"
 DOWNLOAD_SYMBOLS="true"
 SETUP_ENV_VARS="true"
+PRINT_ARTIFACT="false"
+
+USAGE="Usage: install.sh [--version <version>] [--flavor <compiler|runtime>] [--no-config] [--no-symbols] [--no-env-setup] [--print-artifact]
+
+Flavors:
+  runtime   (default) the native binary: reporter, receiver, retriever, MCP, CLI
+  compiler  the JVM build: everything runtime does, plus 'generate', compile, link
+            Linux only here. On macOS the compiler is a .dmg, installed with
+            'brew install --cask log-10x/tap/log10x-cloud'.
+
+Retired:
+  edge      the jpackage JIT build. Removed -- see FLAVORS.md.
+
+Deprecated spellings, still accepted:
+  cloud  -> compiler
+  native -> runtime"
 
 # Argument parsing
 while [[ "$#" -gt 0 ]]; do
@@ -41,25 +57,57 @@ while [[ "$#" -gt 0 ]]; do
 		--no-env-setup)
 			SETUP_ENV_VARS="false"
 			;;
+		--print-artifact)
+			PRINT_ARTIFACT="true"
+			;;
         --version)
             VERSION="$2"
             shift
             ;;
         --flavor)
-            FLAVOR=$(echo "$2" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
-            if [[ "$FLAVOR" != "edge" && "$FLAVOR" != "cloud" && "$FLAVOR" != "native" ]]; then
-                echo "Invalid flavor: $FLAVOR. Allowed values are 'edge' / 'cloud' / 'native'."
-                exit 1
-            fi
+            REQUESTED_FLAVOR=$(echo "$2" | tr '[:upper:]' '[:lower:]')  # Convert to lowercase
+            case "$REQUESTED_FLAVOR" in
+                compiler|runtime)
+                    FLAVOR="$REQUESTED_FLAVOR"
+                    ;;
+                cloud)
+                    # Old name. Kept working because this script is fetched from
+                    # main by every docker-images build and by every published
+                    # install one-liner; a hard break here breaks builds that
+                    # nobody edited.
+                    echo "Note: --flavor cloud is the old name for 'compiler'. Use --flavor compiler." >&2
+                    FLAVOR="compiler"
+                    ;;
+                native)
+                    echo "Note: --flavor native is the old name for 'runtime'. Use --flavor runtime." >&2
+                    FLAVOR="runtime"
+                    ;;
+                edge)
+                    echo "--flavor edge has been removed." >&2
+                    echo "" >&2
+                    echo "'edge' named the jpackage JIT build (.deb/.rpm with a bundled JRE)." >&2
+                    echo "It was kept for musl systems, and that justification was false: the" >&2
+                    echo "jpackage packages are .deb/.rpm, which Alpine cannot install either." >&2
+                    echo "" >&2
+                    echo "Use instead:" >&2
+                    echo "  --flavor runtime   the native binary (reporter, receiver, retriever, MCP, CLI)" >&2
+                    echo "  --flavor compiler  the JVM build, if you need 'generate' / compile / link" >&2
+                    exit 1
+                    ;;
+                *)
+                    echo "Invalid flavor: $REQUESTED_FLAVOR. Allowed values are 'compiler' / 'runtime'."
+                    exit 1
+                    ;;
+            esac
             shift
             ;;
         --help)
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-symbols] [--no-env-setup]"
+            echo "$USAGE"
             exit 0
             ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: install.sh [--version <version>] [--flavor <edge|cloud|native>] [--no-config] [--no-symbols] [--no-env-setup]"
+            echo "$USAGE"
             exit 1
             ;;
     esac
@@ -67,11 +115,32 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 TENX_VERSION=$VERSION
-TENX_FLAVOR="tenx-$FLAVOR"
+
+# PACKAGE_ID is the RELEASE-ASSET AND ON-DISK token, and it is deliberately NOT
+# the flavor name.
+#
+# Renaming the flavor flag is free. Renaming these strings is not, because they
+# are baked into things this script cannot reach:
+#
+#   - every release asset already published (1.0.x through 1.1.37 all carry
+#     tenx-cloud-* / tenx-edge-*), and --version accepts any of them
+#   - the install prefix /opt/tenx-cloud and /opt/tenx-edge, which the jpackage
+#     .deb/.rpm creates and which docker-images bakes into TENX_HOME/TENX_BIN
+#   - the binary inside the package, /opt/tenx-cloud/bin/tenx-cloud
+#   - the Homebrew cask/formula URLs in log-10x/homebrew-tap
+#
+# So: flavor names are the vocabulary users type, PACKAGE_ID is the wire format.
+# See FLAVORS.md for the full mapping across all five vocabularies.
+case "$FLAVOR" in
+	compiler) PACKAGE_ID="cloud" ;;
+	runtime)  PACKAGE_ID="edge" ;;
+esac
+
+TENX_FLAVOR="tenx-$PACKAGE_ID"
 
 DOWNLOAD_MODULES="true"
 
-if [ "$FLAVOR" != "native" ]; then
+if [ "$FLAVOR" != "runtime" ]; then
 	DOWNLOAD_MODULES="false"
 fi
 
@@ -104,11 +173,11 @@ esac
 
 echo "Detected machine as $OS $VERSION_ID $ARCH"
 
-# Validate native by what it actually requires, not by distro name.
+# Validate the runtime by what it actually requires, not by distro name.
 #
 # This used to be a three-name allowlist -- ubuntu, debian, macos -- which
 # rejected every RPM-family distro by name while the binary ran on them fine.
-# Since native is the DEFAULT flavor, a RHEL/Rocky/Alma/Amazon Linux user
+# Since the runtime is the DEFAULT flavor, a RHEL/Rocky/Alma/Amazon Linux user
 # following the documented one-liner was told "Unsupported operating system"
 # for software that works on their machine.
 #
@@ -122,7 +191,7 @@ echo "Detected machine as $OS $VERSION_ID $ARCH"
 #
 # ubuntu:20.04 is the useful control: it ships glibc 2.31, so it runs the
 # current binary and would NOT have run 1.1.6, which required 2.34.
-if [ "$FLAVOR" == "native" ] && [ "$OS" != "macos" ]; then
+if [ "$FLAVOR" == "runtime" ] && [ "$OS" != "macos" ]; then
 
 	GLIBC_MIN_MAJOR=2
 	GLIBC_MIN_MINOR=17
@@ -140,10 +209,10 @@ if [ "$FLAVOR" == "native" ] && [ "$OS" != "macos" ]; then
 	fi
 
 	if [ -z "$DETECTED_GLIBC" ]; then
-		echo "Could not detect glibc on $OS. The native build requires glibc ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} or newer."
+		echo "Could not detect glibc on $OS. The runtime build requires glibc ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} or newer."
 		echo "This looks like a musl system such as Alpine. No 10x build runs here:"
-		echo "  - native  is linked against glibc"
-		echo "  - edge    ships only as .deb / .rpm, which Alpine does not install"
+		echo "  - runtime   is linked against glibc"
+		echo "  - compiler  ships only as .deb / .rpm, which Alpine does not install"
 		echo "Run 10x in a glibc container instead, e.g. the log10x/edge-10x image."
 		exit 1
 	fi
@@ -154,23 +223,31 @@ if [ "$FLAVOR" == "native" ] && [ "$OS" != "macos" ]; then
 
 	if [ "$GLIBC_MAJOR" -lt "$GLIBC_MIN_MAJOR" ] || \
 	   { [ "$GLIBC_MAJOR" -eq "$GLIBC_MIN_MAJOR" ] && [ "$GLIBC_MINOR" -lt "$GLIBC_MIN_MINOR" ]; }; then
-		echo "glibc $DETECTED_GLIBC is older than the ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} the native build requires."
-		echo "Install with --flavor edge instead, which runs on the bundled JRE."
+		echo "glibc $DETECTED_GLIBC is older than the ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR} the runtime build requires."
+		echo "Run 10x in a container instead, e.g. the log10x/edge-10x image."
+		echo "(--flavor compiler installs the JVM build from .deb/.rpm, but that package"
+		echo " has its own glibc floor and has not been validated below ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}.)"
 		exit 1
 	fi
 
-	echo "Detected glibc $DETECTED_GLIBC (native requires ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}+)"
+	echo "Detected glibc $DETECTED_GLIBC (runtime requires ${GLIBC_MIN_MAJOR}.${GLIBC_MIN_MINOR}+)"
 fi
 
 ARTIFACT_PATTERN=""
+MACOS_COMPILER="false"
 MODULES_FILE="tenx-modules-${TENX_VERSION}.tar.gz"
 CONFIG_FILE="tenx-config-${TENX_VERSION}.tar.gz"
 SYMBOLS_FILE="tenx-symbols-${TENX_VERSION}.10x.tar"
 LICENSE_FILE="LICENSE.txt"
 INSTALL_CMD=""
 
-# Set artifact pattern based on OS, flavor, and architecture
-if [ "$FLAVOR" == "native" ]; then
+# Set artifact pattern based on OS, flavor, and architecture.
+#
+# The literal `tenx-edge-` / `${TENX_FLAVOR}` tokens below are PACKAGE_ID, not
+# the flavor name. They must keep matching the assets that log-10x/engine's
+# release job actually uploads. If those asset names ever change, everything in
+# the "Lockstep" list in FLAVORS.md changes with them, in the same release.
+if [ "$FLAVOR" == "runtime" ]; then
 	if [ "$OS" == "macos" ]; then
 		if [[ "$ARCH" == "x86_64" ]]; then
 			ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-macos-amd64-native"
@@ -182,6 +259,33 @@ if [ "$FLAVOR" == "native" ]; then
     elif [[ "$ARCH" == "aarch64" ]]; then
     	ARTIFACT_PATTERN="tenx-edge-${TENX_VERSION}-aarch64-native"
     fi
+elif [ "$OS" == "macos" ]; then
+	# --flavor compiler on macOS.
+	#
+	# The compiler has no macOS artifact this script can install. It ships as
+	# tenx-cloud-<v>.dmg / tenx-cloud-<v>-intel.dmg, a disk image carrying
+	# tenx-cloud.app -- not a bare binary like the runtime, and not a package a
+	# package manager takes. Before this branch existed the chain below fell
+	# through to "Unsupported operating system: macos", which is false twice
+	# over: macOS is supported, and the flag the docs hand every reader is the
+	# one that hit it.
+	#
+	# The pattern is still set rather than exiting here, so --print-artifact can
+	# resolve the DMG. That asset is what log-10x/homebrew-tap's cask points at,
+	# and it is the one whose name-drift fails SILENTLY today: the tap job in
+	# log-10x/engine `find`s for it and exits 0 when nothing matches. Being able
+	# to assert it against a real release is worth more than an early exit; the
+	# install itself is refused a few lines below, after --print-artifact.
+	#
+	# -intel is a suffix, so `${TENX_FLAVOR}-${TENX_VERSION}\.dmg` matches the
+	# arm image only. Anchoring matters here: the looser [a-zA-Z0-9._-]*? form
+	# used by the deb/rpm branches would match both DMGs from either arch.
+	if [[ "$ARCH" == "x86_64" ]]; then
+		ARTIFACT_PATTERN="${TENX_FLAVOR}-${TENX_VERSION}-intel\.dmg"
+	else
+		ARTIFACT_PATTERN="${TENX_FLAVOR}-${TENX_VERSION}\.dmg"
+	fi
+	MACOS_COMPILER="true"
 elif [[ "$OS" == "ubuntu" || "$OS" == "debian" ]]; then
     if [[ "$ARCH" == "x86_64" ]]; then
     	ARTIFACT_PATTERN="${TENX_FLAVOR}[a-zA-Z0-9._-]*?${TENX_VERSION}[a-zA-Z0-9._-]*?amd64\.deb"
@@ -204,6 +308,61 @@ elif [[ "$OS" == "centos" || "$OS" == "fedora" || "$OS" == "rhel" ]]; then
 else
     echo "Unsupported operating system: $OS"
     exit 1
+fi
+
+# --print-artifact: resolve the asset this invocation WOULD download, print it,
+# and stop. Installs nothing.
+#
+# This exists so the flavor->asset mapping can be asserted in CI against a real
+# release instead of being assumed. The failure mode it targets is the one that
+# already bit the Homebrew tap job in log-10x/engine: a name-pattern that stops
+# matching, a lookup that returns empty, and a pipeline that reports success
+# while shipping nothing. Here an empty resolution exits 1.
+if [ "$PRINT_ARTIFACT" == "true" ]; then
+	API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
+	ASSET_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" "$API_URL")
+	RESOLVED=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
+
+	echo "flavor:     $FLAVOR"
+	echo "package id: $PACKAGE_ID"
+	echo "os/arch:    $OS $ARCH"
+	echo "version:    $TENX_VERSION"
+	echo "pattern:    $ARTIFACT_PATTERN"
+
+	if [ -z "$RESOLVED" ]; then
+		echo "artifact:   NONE -- no asset in release $TENX_VERSION matches this pattern"
+		exit 1
+	fi
+
+	echo "artifact:   $(basename "$RESOLVED")"
+	echo "url:        $RESOLVED"
+	exit 0
+fi
+
+# The macOS compiler resolves to a DMG (above), and stops here.
+#
+# Mounting it and copying tenx-cloud.app somewhere is not the whole job. The
+# Homebrew cask also downloads config and symbols, writes the /usr/local/bin/tenx
+# launcher that sets TENX_CONFIG and TENX_SYMBOLS_PATH before exec'ing into the
+# bundle, and removes all of it on uninstall. This script installs its own macOS
+# runtime to /usr/local/bin/tenx (see the runtime branch below), so a second
+# unmanaged copy here would contend for that exact path with no uninstall on
+# either side. One managed macOS install path is the whole point.
+if [ "$MACOS_COMPILER" == "true" ]; then
+	echo "The compiler flavor is installed with Homebrew on macOS, not by this script."
+	echo ""
+	echo "  brew install --cask log-10x/tap/log10x-cloud"
+	echo ""
+	echo "The cask installs tenx-cloud.app plus config and symbols, and puts a"
+	echo "'tenx' launcher on PATH. It is the same DMG this script would fetch:"
+	# ARTIFACT_PATTERN is a regex; the '.' is escaped for grep -E. Strip the
+	# backslash so the line reads as the file name it is naming.
+	echo "  ${ARTIFACT_PATTERN//\\/}"
+	echo ""
+	echo "For the native runtime instead (no 'generate' / compile / link), this"
+	echo "script does handle macOS:"
+	echo "  install.sh --flavor runtime"
+	exit 1
 fi
 
 echo " .----------------. .----------------. .----------------. .----------------. .----------------. .----------------. "
@@ -229,13 +388,19 @@ echo " '----------------' '----------------' '----------------' '---------------
 # and one package download later.
 #
 # The install destination is not one path, so it is computed rather than guessed:
-#   native + macos   ->  /usr/local           (binary moved to bin/tenx)
-#   native + linux   ->  /opt/tenx-edge       (TENX_FLAVOR is reset to tenx-edge)
-#   edge|cloud       ->  /opt/tenx-$FLAVOR    (deb/rpm)
+#   runtime + macos   ->  /usr/local             (binary moved to bin/tenx)
+#   runtime + linux   ->  /opt/tenx-edge         (PACKAGE_ID is edge)
+#   compiler          ->  /opt/$TENX_FLAVOR      (deb/rpm; PACKAGE_ID is cloud)
 # Every one of those paths ends by creating a `tenx` launcher in bin, so that is
 # what gets tested -- a directory alone is not evidence of an install, and for
 # macOS /usr/local always exists.
-if [ "$FLAVOR" == "native" ]; then
+#
+# The flavor name tested here is the POST-rename one. 48cf776 wrote `native`,
+# which was correct on the vocabulary of its day; leaving it would have silently
+# sent runtime+macOS down the else branch to /opt/tenx-edge, a path that install
+# never creates on macOS, so the guard would have gone dead again on exactly the
+# platform it is hardest to notice on.
+if [ "$FLAVOR" == "runtime" ]; then
 	if [ "$OS" == "macos" ]; then
 		TENX_HOME="/usr/local"
 	else
@@ -249,9 +414,27 @@ echo "Looking for a previous installation of the 10x engine..."
 if [ -e "$TENX_HOME/bin/tenx" ] || [ -L "$TENX_HOME/bin/tenx" ]; then
     echo ""
     echo "======================================================================================================"
-    echo " You already have the 10x engine installed at - $TENX_HOME"
+    echo " You already have the 10x engine installed at - $TENX_HOME/bin/tenx"
     echo ""
-    echo " Remove $TENX_HOME and re-run this script to reinstall."
+    # What to remove is NOT $TENX_HOME on every platform. On Linux, TENX_HOME is
+    # /opt/tenx-edge or /opt/tenx-cloud and the whole prefix belongs to 10x. On
+    # macOS it is /usr/local, a shared Homebrew prefix -- "Remove /usr/local"
+    # would take every brew-installed program on the machine with it. There the
+    # install is one file, and if it came from the tap, brew owns it.
+    if [ "$OS" == "macos" ]; then
+        if [ -L "$TENX_HOME/bin/tenx" ]; then
+            echo " That is a symlink, so it was most likely installed by Homebrew:"
+            echo "   brew uninstall log10x            (the runtime formula)"
+            echo "   brew uninstall --cask log10x-cloud"
+            echo ""
+        fi
+        echo " To reinstall with this script, remove that one file and re-run:"
+        echo "   rm $TENX_HOME/bin/tenx"
+        echo ""
+        echo " Do NOT remove $TENX_HOME itself. It is the shared Homebrew prefix."
+    else
+        echo " Remove $TENX_HOME and re-run this script to reinstall."
+    fi
     echo "======================================================================================================"
     echo ""
     exit 0
@@ -296,7 +479,7 @@ API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
 ASSET_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" "$API_URL")
 
 # Resolve main artifact URL
-ARTIFACT_URL=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed 's/.*"browser_download_url":\s*"\([^"]*\)".*/\1/')
+ARTIFACT_URL=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
 if [ -z "$ARTIFACT_URL" ]; then
     echo "Error: No asset found matching pattern '$ARTIFACT_PATTERN' for release '$TENX_VERSION'"
     exit 1
@@ -313,10 +496,12 @@ if [ -n "$INSTALL_CMD" ]; then
     echo "Installing artifact with: $INSTALL_CMD $TEMP_DIR/$ARTIFACT_FILE"
     echo ""
     $INSTALL_CMD $TEMP_DIR/$ARTIFACT_FILE
-elif [ "$FLAVOR" == "native" ]; then
+elif [ "$FLAVOR" == "runtime" ]; then
 	echo ""
-	echo "Installing native artifact..."
-	TENX_FLAVOR="tenx-edge"
+	echo "Installing runtime artifact..."
+	# TENX_FLAVOR is already tenx-edge here (PACKAGE_ID=edge for the runtime).
+	# The prefix stays /opt/tenx-edge: docker-images bakes it into TENX_HOME and
+	# TENX_BIN in five Dockerfiles, and every published container carries it.
 	if [ "$OS" == "macos" ]; then
 		INSTALL_DIR="/usr/local"
 		mkdir -p "$INSTALL_DIR/bin"
