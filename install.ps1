@@ -29,7 +29,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.37" }
+$Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.38" }
 $RequestedFlavor = if ($env:TENX_FLAVOR) { "$env:TENX_FLAVOR".Trim().ToLowerInvariant() } else { "compiler" }
 $SkipConfig = $env:TENX_NO_CONFIG -eq "true"
 $Repo = "log-10x/pipeline-releases"
