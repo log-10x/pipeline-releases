@@ -355,7 +355,9 @@ if [ "$MACOS_COMPILER" == "true" ]; then
 	echo ""
 	echo "The cask installs tenx-cloud.app plus config and symbols, and puts a"
 	echo "'tenx' launcher on PATH. It is the same DMG this script would fetch:"
-	echo "  $ARTIFACT_PATTERN"
+	# ARTIFACT_PATTERN is a regex; the '.' is escaped for grep -E. Strip the
+	# backslash so the line reads as the file name it is naming.
+	echo "  ${ARTIFACT_PATTERN//\\/}"
 	echo ""
 	echo "For the native runtime instead (no 'generate' / compile / link), this"
 	echo "script does handle macOS:"
@@ -412,9 +414,27 @@ echo "Looking for a previous installation of the 10x engine..."
 if [ -e "$TENX_HOME/bin/tenx" ] || [ -L "$TENX_HOME/bin/tenx" ]; then
     echo ""
     echo "======================================================================================================"
-    echo " You already have the 10x engine installed at - $TENX_HOME"
+    echo " You already have the 10x engine installed at - $TENX_HOME/bin/tenx"
     echo ""
-    echo " Remove $TENX_HOME and re-run this script to reinstall."
+    # What to remove is NOT $TENX_HOME on every platform. On Linux, TENX_HOME is
+    # /opt/tenx-edge or /opt/tenx-cloud and the whole prefix belongs to 10x. On
+    # macOS it is /usr/local, a shared Homebrew prefix -- "Remove /usr/local"
+    # would take every brew-installed program on the machine with it. There the
+    # install is one file, and if it came from the tap, brew owns it.
+    if [ "$OS" == "macos" ]; then
+        if [ -L "$TENX_HOME/bin/tenx" ]; then
+            echo " That is a symlink, so it was most likely installed by Homebrew:"
+            echo "   brew uninstall log10x            (the runtime formula)"
+            echo "   brew uninstall --cask log10x-cloud"
+            echo ""
+        fi
+        echo " To reinstall with this script, remove that one file and re-run:"
+        echo "   rm $TENX_HOME/bin/tenx"
+        echo ""
+        echo " Do NOT remove $TENX_HOME itself. It is the shared Homebrew prefix."
+    else
+        echo " Remove $TENX_HOME and re-run this script to reinstall."
+    fi
     echo "======================================================================================================"
     echo ""
     exit 0
