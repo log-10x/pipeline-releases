@@ -366,9 +366,43 @@ fi
 # already bit the Homebrew tap job in log-10x/engine: a name-pattern that stops
 # matching, a lookup that returns empty, and a pipeline that reports success
 # while shipping nothing. Here an empty resolution exits 1.
+# Fetch a release from the GitHub API.
+#
+# Authenticate when a token is available. The unauthenticated limit is 60
+# requests per hour PER IP, and CI runners share IPs: the forwarder publish
+# fans out ~10 parallel image builds, each calling this twice, so the limit is
+# exhausted and GitHub answers 403. The old code passed that body straight to
+# grep, found no browser_download_url, and reported "No asset found matching
+# pattern", which reads as a missing artifact and sent people looking at the
+# release instead of the rate limit. A different job failed on each re-run,
+# which is the signature of a shared quota rather than a bad pattern.
+tenx_fetch_release() {
+	local url="$1" body http
+	local -a auth=()
+	local tok="${TENX_GITHUB_TOKEN:-${GITHUB_TOKEN:-${GH_TOKEN:-}}}"
+	[ -n "$tok" ] && auth=(-H "Authorization: Bearer $tok")
+
+	body=$(curl -s -w '\n%{http_code}' -H "Accept: application/vnd.github.v3+json" "${auth[@]}" "$url")
+	http="${body##*$'\n'}"
+	body="${body%$'\n'*}"
+
+	if [ "$http" != "200" ]; then
+		echo "Error: GitHub API returned HTTP $http for $url" >&2
+		case "$http" in
+			403|429)
+				echo "  Rate limited. The unauthenticated limit is 60 requests/hour per IP." >&2
+				echo "  Set TENX_GITHUB_TOKEN (or GITHUB_TOKEN) to raise it, or retry later." >&2
+				;;
+			404) echo "  No such release. Check the version." >&2 ;;
+		esac
+		return 1
+	fi
+	printf '%s' "$body"
+}
+
 if [ "$PRINT_ARTIFACT" == "true" ]; then
 	API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
-	ASSET_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" "$API_URL")
+	ASSET_INFO=$(tenx_fetch_release "$API_URL") || exit 1
 	RESOLVED=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
 
 	echo "flavor:     $FLAVOR"
@@ -539,12 +573,13 @@ if [ "$SETUP_ENV_VARS" == "true" ] && [ "$OS" != "macos" ]; then
 	fi
 fi
 
+
 # Create a temporary directory for the download
 TEMP_DIR=$(mktemp -d)
 
 # Query GitHub API for release assets
 API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
-ASSET_INFO=$(curl -s -H "Accept: application/vnd.github.v3+json" "$API_URL")
+ASSET_INFO=$(tenx_fetch_release "$API_URL") || exit 1
 
 # Resolve main artifact URL
 ARTIFACT_URL=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
