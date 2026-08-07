@@ -39,7 +39,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.47" }
+$Version = if ($env:TENX_VERSION) { $env:TENX_VERSION } else { "1.1.48" }
 # Default is runtime-jvm, matching install.sh, whose default is the runtime.
 # Most people installing 10x want to RUN it; 'generate'/compile/link is the
 # smaller audience and is what 'compiler' is for.
