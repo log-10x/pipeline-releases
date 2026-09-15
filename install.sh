@@ -400,10 +400,32 @@ tenx_fetch_release() {
 	printf '%s' "$body"
 }
 
+# Resolve the one asset ARTIFACT_PATTERN names, out of a release body.
+#
+# Every published asset carries a signature sibling whose name is the asset's
+# own name with a suffix on the end: `tenx-cloud-1.1.79-1.x86_64.rpm` also
+# ships as `tenx-cloud-1.1.79-1.x86_64.rpm.cosign.bundle`. ARTIFACT_PATTERN is
+# matched unanchored, so it matches the sibling too, and two URLs come back
+# from what the callers below read as one. curl then writes both bodies into a
+# file named after the LAST match and the package manager is handed the
+# bundle: log-10x/docker-images run 34973654668 failed on
+# "Unable to find a match: /tmp/.../tenx-cloud-1.1.79-1.x86_64.rpm.cosign.bundle".
+#
+# Drop the signature and attestation siblings before the pattern is applied.
+# Anchoring the pattern instead would break the flavors whose asset name is a
+# prefix of the pattern's match.
+tenx_resolve_asset() {
+	echo "$1" \
+		| grep -o '"browser_download_url":\s*"[^"]*"' \
+		| grep -Eiv '\.(cosign\.bundle|sig|asc|pem|crt|sha256|sha512|intoto\.jsonl)"[[:space:]]*$' \
+		| grep -Ei "$2" \
+		| sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/'
+}
+
 if [ "$PRINT_ARTIFACT" == "true" ]; then
 	API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
 	ASSET_INFO=$(tenx_fetch_release "$API_URL") || exit 1
-	RESOLVED=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
+	RESOLVED=$(tenx_resolve_asset "$ASSET_INFO" "$ARTIFACT_PATTERN")
 
 	echo "flavor:     $FLAVOR"
 	echo "package id: $PACKAGE_ID"
@@ -582,7 +604,7 @@ API_URL="https://api.github.com/repos/$GITHUB_REPO/releases/tags/$TENX_VERSION"
 ASSET_INFO=$(tenx_fetch_release "$API_URL") || exit 1
 
 # Resolve main artifact URL
-ARTIFACT_URL=$(echo "$ASSET_INFO" | grep -o '"browser_download_url":\s*"[^"]*"' | grep -Ei "$ARTIFACT_PATTERN" | sed -E 's/.*"browser_download_url":[[:space:]]*"([^"]*)".*/\1/')
+ARTIFACT_URL=$(tenx_resolve_asset "$ASSET_INFO" "$ARTIFACT_PATTERN")
 if [ -z "$ARTIFACT_URL" ]; then
     echo "Error: No asset found matching pattern '$ARTIFACT_PATTERN' for release '$TENX_VERSION'"
     exit 1
