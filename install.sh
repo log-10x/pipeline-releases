@@ -20,6 +20,15 @@
 # The Log10x software it installs is proprietary and requires a commercial
 # license for production use. See https://log10x.com/pricing
 
+# Piped into sh (dash on Debian and Ubuntu), the [[ ]] tests below fail and the
+# OS check reports a supported distribution as unsupported. Stop with the
+# command that works instead.
+if [ -z "${BASH_VERSION:-}" ]; then
+    echo "install.sh needs bash. Run it as:" >&2
+    echo "  curl -fsSL https://raw.githubusercontent.com/log-10x/pipeline-releases/main/install.sh | bash -s -- [options]" >&2
+    exit 1
+fi
+
 set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
