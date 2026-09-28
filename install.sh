@@ -32,7 +32,7 @@ fi
 set -e
 
 GITHUB_REPO="log-10x/pipeline-releases"
-VERSION="1.1.85"
+VERSION="1.1.86"
 FLAVOR="runtime"
 DOWNLOAD_CONFIG="true"
 DOWNLOAD_SYMBOLS="true"
