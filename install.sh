@@ -716,6 +716,16 @@ if [ "$DOWNLOAD_SYMBOLS" == "true" ]; then
 	echo ""
 	echo "Downloading pre-compiled 10x symbols: $SYMBOLS_CURL"
 	$SYMBOLS_CURL
+
+	# A release can also carry the security symbol library, which the runtime loads beside the default one.
+	SECURITY_SYMBOLS_FILE="tenx-symbols-security-${TENX_VERSION}.10x.tar"
+	SECURITY_SYMBOLS_URL=$(tenx_resolve_asset "$ASSET_INFO" "/${SECURITY_SYMBOLS_FILE//./\\.}\"")
+	if [ -n "$SECURITY_SYMBOLS_URL" ]; then
+		SECURITY_SYMBOLS_CURL="curl -f -L -o $TENX_SYMBOLS_PATH/$SECURITY_SYMBOLS_FILE $SECURITY_SYMBOLS_URL"
+		echo ""
+		echo "Downloading the 10x security symbols: $SECURITY_SYMBOLS_CURL"
+		$SECURITY_SYMBOLS_CURL
+	fi
 fi
 
 # Download and install LICENSE file
